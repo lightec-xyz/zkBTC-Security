@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "strict": true,
+    "composite": true,
+    "module": "NodeNext",
+    "outDir": "dist",
+    "esModuleInterop": true
+  },
+  "include": ["./analysis/src"],
+  "files": ["./analysis/index.ts"]
+}

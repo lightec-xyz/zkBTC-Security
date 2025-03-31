@@ -1,0 +1,7 @@
+*.tsbuildinfo
+**/package-lock.json
+**/.DS_store
+/node_modules
+/dist
+*.out
+analysis/data/headers.txt
