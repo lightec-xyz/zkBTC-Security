@@ -147,12 +147,12 @@ The smart contract, however, needs to take care of block timestamp drift, proof 
 
 #### Setting a Proper Allowance
 
-Specifically, we'd like to reserve 6 for the potential checkpoint timestamp error, 2 for waiting for the chain tip to be available and proof to be generated, and then 1 for every additional 6 confirmation depth requirements covering the variation of hashing power and block time.
+Specifically, we'd like to reserve 6 for the potential checkpoint timestamp error, 2 for waiting for the chain tip to be available and proof to be generated, and then 1 for every additional 4 confirmation depth requirements covering the variation of hashing power and block time.
 ```
-    allowance = 6 + 2 + (depth - 6)/6 = 7 + depth/6
+    allowance = 6 + 2 + (depth - 6)/6 = 7 + depth/4
 ```
 
-Therefore, for transaction confirmation depth requirements of 9, 12, 18, and 24 and the checkpoint candidate depth requirement of 36, the corresponding allowance is 9, 9, 10, 11, and 13.
+Therefore, for transaction confirmation depth requirements of 9, 12, 18, and 24 and the checkpoint candidate depth requirement of 36, the corresponding allowance is 10, 10, 12, 13, and 16.
 
 #### Becoming a CheckPoint Candidate
 
@@ -171,6 +171,12 @@ Although the in-circuit check is a strong defense, we could still discuss this h
 
 Note that `better_estimation` is unknown to the smart contract and is used here simply to clarify this text.
 
+#### Free Depth from Consensus
+
+There is another source of *free* depth besides what we have discussed so far. If there are lots of new mining power joining the game, the average block interval could be greatly shrunk.
+
+Let's discuss a concrete yet hypothetical case, that after a checkpoint is selected only a few blocks after a new mining difficulty had been settled. Immediately after the checkpoint selectioin, some mining power joins the game just to drive the average block time to below 8 minutes instead of 10. 20 hours later, the main-net generates 150 new blocks intead of 120. The excessive 30 new blocks give the adversary a huge boost.
+
 #### Putting Everything Together
 
 We need to find out the threshold of hashing power that an adversary must command in order to defeat our checkpoint system. Given:
@@ -179,7 +185,7 @@ We need to find out the threshold of hashing power that an adversary must comman
                     = better_estimation - free_depth;
     free_depth      = 12;
     required_minimal_depth = estimated_depth - allowance;
-    allowance = 7 + depth/6
+    allowance = 7 + depth/4
 ```
 
 Suppose the transaction depth requirement is D (D = 9 for small deposits, 12 for medium amounts, and 18 and 24 for even larger amounts), and the attacker commands x% hashing power compared to all honest miners combined. At some point on or after the checkpoint block, the attacker must begin to mine its own blocks. To meet the transaction depth requirement, the attacker must spend `average_attacker_time_for_D_blocks` on average, assuming the average block interval to be 10 minutes:
@@ -203,22 +209,22 @@ The attacker needs `cp_depth_diff <= allowance`. But since there could be free d
     // (allowance + D + 12) must be positive
 ```
 
-Solving the above inequalities for `(D, allowance) = (9, 9)`:
+Solving the above inequalities for `(D, allowance) = (9, 10)`:
 ```golang
-    // x >= 900/(9 + 9 + 12) = 30
+    // x >= 900/(9 + 10 + 12) = 29.0
 ```
-And for `(D, allowance) = (12, 9), (18, 10), (24, 11)`
+And for `(D, allowance) = (12, 10), (18, 12), (24, 13)`
 ```golang
-    // x >= 1200/( 9 + 12 + 12) = 36.4
-    // x >= 1800/(11 + 18 + 12) = 43.9
-    // x >= 2400/(12 + 24 + 12) = 50.0
+    // x >= 1200/(12 + 10 + 12) = 35.2
+    // x >= 1800/(18 + 12 + 12) = 42.8
+    // x >= 2400/(24 + 13 + 12) = 49.0
 ```
 
 Note that we were talking about average cases. There are small chances that the attacker mines more blocks sooner than average. However, the block time variation has been handled with the allowance value (see earlier sections).
 
-The `tx_depth` requirement for a checkpoint candidate is set to 36 (with `allowance` set to 13):
+The `tx_depth` requirement for a checkpoint candidate is set to 36 (with `allowance` set to 16):
 ```golang
-    // x >= 3600/(13 + 36 + 12) = 59.0
+    // x >= 3600/(36 + 16 + 12) = 56.3
 ```
 
 #### Escalating the Depth Requirement
@@ -233,7 +239,7 @@ In the above discussion, we assume the attacker uses *new* hashing power instead
 
 Nonetheless, our security architecture does not rely on the actual block interval. We use the expected 10 minutes and then `allowance` to handle any variation. So if the supposed situation does happen, then instead of invalid deposits being accepted, valid deposits might get declined as the checkpoint depth requirement cannot be met, but only temporarily.
 
-To recover from this situation, the mainnet must have mined blocks faster than the 10-minute expectation to compensate for the 'lost depth'. This could happen a while after the attacker has stopped without gains, or more honest hashing power joins the mining as their owners see the opportunity or the difficulty adjustment results in a lower difficulty due to a prolonged average block interval and hence faster block mining.
+To recover from this situation, the mainnet must have mined blocks faster than the 600+150 seconds allowance to compensate for the 'lost depth'. This could happen a while after the attacker has stopped without gains, or more honest hashing power joins the mining as their owners see the opportunity or the difficulty adjustment results in a lower difficulty due to a prolonged average block interval and hence faster block mining.
 
 ### Defense in Depth - Replacing Chain Tip Signature with More Depth Requirements
 
@@ -241,10 +247,10 @@ In the discussion, the chain tip's signature has become the single point of fail
 
 Our current practice is to double the depth requirements, and update the allowance value accordingly. This is on top of the depth requirement escalation mentioned earlier.
 
-With this design, we have two new depth requirements: (D, allowance) = (48, 15), (72, 19). The hashing power requirements for the attacker are:
+With this design, we have two new depth requirements: (D, allowance) = (48, 19), (72, 25). The hashing power requirements for the attacker are:
 ```golang
-    // x >= 4800/(15 + 48 + 12) = 64.0
-    // x >= 7200/(19 + 72 + 12) = 69.9
+    // x >= 4800/(48 + 19 + 12) = 60.8
+    // x >= 7200/(72 + 25 + 12) = 66.1
 ```
 
 ## Securing Redemption
@@ -308,7 +314,7 @@ The server should create the secret only once, and [seal](https://pkg.go.dev/git
 Once the TLS connection is established, the secret exchange process follows these steps:
 
 A. Client Generates an SGX Remote Attestation Report
-1.	The client generates a Secp256k1 key pair, again with the private key being `privateKey := SHA256(SHA256(UniqueKey))`. Note that this might fail with a very small chance and this is acceptable in our use. There are multiple ways to workaround it that we will not cover here.
+1.	The client generates a Secp256k1 key pair, again with the private key being `privateKey := SHA256(SHA256(UniqueKey))`. Note that this might fail with a negleble chance (less than $2^{-127}$), which is acceptable in our use.
 2.	The public key is used as a parameter [to generate an SGX Remote Attestation Report](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/enclave#GetRemoteReport).
 3.	The client sends the SGX report to the server.
 
