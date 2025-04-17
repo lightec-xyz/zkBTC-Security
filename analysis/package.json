@@ -2,7 +2,7 @@
   "name": "zkbtc-security",
   "scripts": {
     "build": "tsc",
-    "main": "tsc && node dist/analysis/index.js"
+    "main": "npx tsc && node dist/index.js"
   },
   "devDependencies": {
     "@types/node": "^22.13.13",

@@ -1,7 +1,7 @@
 import { open } from "node:fs/promises";
 import { parse_timestamp_from_blockhead } from "./cp_compute_all";
 
-async function get_timestamps_from_file(dataPath:string="analysis/data/headers.txt"){
+async function get_timestamps_from_file(dataPath:string="data/headers.txt"){
     let timestamps:number[] = []
     const file = await open(dataPath);
     let i=0
@@ -12,7 +12,7 @@ async function get_timestamps_from_file(dataPath:string="analysis/data/headers.t
     return timestamps
 }
 
-export async function evaluate_timestamp_statistics(timestamps:number[], granularity:number=2016, start=1){
+export async function evaluate_timestamp_statistics(timestamps:number[], granularity:number=2016, start=1, filter:(v:number)=>boolean=(v)=>(v>=700)){
     if (!granularity) granularity=2016;
     if (!start) start=1;
     let i=start;let s=0;
@@ -34,7 +34,7 @@ export async function evaluate_timestamp_statistics(timestamps:number[], granula
             sigmas[s]+=Math.pow((delta-means[s]),2)
         }
         sigmas[s]=Math.sqrt(sigmas[s]/granularity);
-        if (means[s]>700){
+        if (filter(s)){
         console.log(`Section ${s}, blocks ${i} to ${i+granularity-1} : mean=${means[s]}, σ=${sigmas[s]}`)}
         i+=granularity;
         s++
@@ -52,7 +52,7 @@ export async function evaluate_timestamp_statistics(timestamps:number[], granula
     console.log(`All blocks from ${start} to ${size} : mean=${mean}, σ=${sigma}`)
 }
 
-async function main(data:string|number[]="analysis/data/headers.txt", granularity=2016, start=1) {
+async function main(data:string|number[]="data/headers.txt", granularity=2016, start=1) {
     if (typeof data === "string") { evaluate_timestamp_statistics(await get_timestamps_from_file(data),granularity,start)}
     else evaluate_timestamp_statistics(data,granularity,start);
 }

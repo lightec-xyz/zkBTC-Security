@@ -7,6 +7,6 @@
     "outDir": "dist",
     "esModuleInterop": true
   },
-  "include": ["./analysis/src"],
-  "files": ["./analysis/index.ts"]
+  "include": ["./src"],
+  "files": ["./index.ts"]
 }
