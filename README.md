@@ -114,6 +114,206 @@ We have designed three defenses against potential attacks, layered in depth:
 
 Now, assuming some potent attacker commanding lots of hashing power has already cracked the first defense, the decentralized roles to sign off the chain tip. It still has to manage enough checkpoint depth. The attacker won't be able to meet both the `Transaction Depth` requirement and the `CheckPoint Depth` requirement if we set proper checking rules in the smart contract. Before discussing any specific rules, we must point out the obvious: it is impossible to pass all legit blocks without passing some offending blocks if the adversary indeed masters too much hashing power. Our aim here is not to reject all offending blocks but to make it as computation-intensive as possible for adversaries, such that attacking us is not economically desirable.
 
+### Circuits Diagrms
+
+#### depth circuits
+
+depth circuits proves that BlockM is ancestor of BlockN, and prove that the depth from BlockM to BlockN is n-m.
+
+**note:** The minimum depth of tx is 9, and the minimum depth of cp is 72
+
+These circuits includes 2 groups external circuits:
+
+* `BlockBulkCircuit`, prove hat when the depth is 9-24 or 72.
+* `RecursiveBulksCircuit`,  prove that when the depth is > 24. RecursiveBulksCircuit is based on the BlockBulkCircuit proof with a depth of 24 or 72, and then absorbs a depth of 1-9, 18, 36, or 72, repeatedly recursing on itself.
+
+![depths](docs/depths.drawio.svg)
+
+```mermaid
+---
+title: Depth circuits of code implement
+---
+
+classDiagram
+
+class RecursiveBulksCircuit{
+    +HybridCircuit
+    +Depth
+}
+
+class HybridCircuit["chainark.HybridCircuit"]{
+    +FirstProof
+    +SecondComp UnitCore
+}
+
+RecursiveBulksCircuit *-- HybridCircuit : Embedding
+SecondComp <|-- DepthCore : implements
+
+FirstProof "1" ..> "0..1" BlockBulkCircuit : Dependency
+FirstProof "1" ..> "0..1" RecursiveBulksCircuit : Dependency
+
+HybridCircuit *-- SecondComp : Embedding
+HybridCircuit *-- FirstProof : Embedding
+
+class BlockBulkCircuit{
+    +MultiUnit
+    +BlockHeaders
+    +Depth
+}
+
+BlockBulkCircuit *-- MultiUnit : Embedding
+BlockBulkCircuit <|-- DepthCore : implements
+
+class DepthCore{
+    +BeginHash
+    +EndHash
+    +BlockHeaders
+    +Depth
+    +GetBeginID()
+    +GetEndID()
+    +Define()
+}
+
+class MultiUnit["chainark.MultiUnit"]{
+    +BeginID
+    +EndID
+}
+```
+
+#### BlockChain circuit
+
+BlockChain circuits prove that a chain is formed from genesis block to blockN, and prove that the difficulty adjustment every 2016 blocks meets the rules.
+
+BlockChain circuits are based on chainark. There are 3 auxiliary circuits:
+
+* `BaseLevelCircuit` proves that 112 blocks form a chain, called a batch.
+* `MidLevelCircuit` proves that 6 batches form a chain, each with 112 blocks. Total is 672 blocks, called a super batch.
+* `UpperLevelCircuit` proves that 3 super batches form a chain. Total is 2016 blocks.
+
+Then there are one `BlockChainCircuit` and multiple `BlockChainHybridCircuit`:
+
+* `BlockChainCircuit` combines two existing proofs into one, extending the chain.
+* `BlockChainHybridCircuit(n)` recursively verifies one existing proof (of `BlockChainCircuit` or `BlockChainHybridCircuit`), plus some more blocks to form a chain, effectively extending the chain proven by the existing proof. There are multiple instances: `n := {1, 2, ..., MiniLevel, MiniLevel*2+1, MiniLevel*3+2, MiniLevel*4+3}`. Numbers are chosen to minimize recursive verifications.
+
+Detailed design ![here](docs/blockchain.drawio.svg)
+
+#### tx circuits
+
+tx circuits proves that `deposit` or `redeem` transaction is on-chain and the depth of the tx meets `the minimum tx depth`. The chain is formed from `the genesis block` to `the latest block`, meets the difficulty adjustment rules, and passes through a well-known `checkpoint block`. The genesis block is well known, and the latest block is accepted and signed by a designated `DFinity` canister.
+
+The tx circuits contain other circuit proofs and circuit components:
+
+* `BlockChainProof`, proves that a consensus chain is formed from the genesis block to the latest block.
+* `CpDepthPoof`, proves that the chain passes through the well-known checkpoint block and its depth meets the minimum cp depth.
+* `TxInBlockCircuit` and `TxDepthPoof`, prove that tx is in a block and the depth of the block on the chain meets the minimum tx depth.
+* `EcdsaSigVerif`, proves that the latest block of this chain was accepted and signed by Dfinity.
+* `RedeemInEthProof`, proves that the redeem tx in ETH has been finalized on the ETH chain.
+
+The tx circuits 2 external circuits:
+
+* `DepositTxCircuit`, proves that the deposit tx in BTC has been confirmed by the specified minimum depth on the BTC chain.
+* `RedeemTxCircuit`, proves that the redeem tx in BTC has been confirmed by the specified minimum depth on the BTC chain, and prove that its previous ETH redeem tx is also finalized on the ETH chain.
+
+![txs](docs/txs.drawio.svg)
+
+```mermaid
+---
+title: TxInChain circuits of code implement
+---
+
+classDiagram
+
+RedeemTxCircuit *-- DepositTxCircuit : Embedding
+RedeemTxCircuit *-- RecursiveVerifierCircuit : Embedding
+
+DepositTxCircuit *-- Verifier : Embedding
+DepositTxCircuit *-- EcdsaSigVerif : Embedding
+DepositTxCircuit *-- BlockDepthsCircuit : Embedding
+DepositTxCircuit *-- TxInBlockCircuit : Embedding
+
+class RecursiveVerifierCircuit{
+    +Proof
+}
+
+RecursiveVerifierCircuit "1" ..> "1" `eth.RedeemCircuit` : Dependency
+
+class Verifier["chainark.Verifier"]{
+    +Proof
+}
+
+Verifier "1" ..> "0..1" BlockChainCircuit : Dependency
+Verifier "1" ..> "0..1" BlockChainHybridCircuit : Dependency
+
+class BlockDepthsCircuit{
+    +TxDepthProof
+    +CpDepthProof
+}
+
+BlockDepthsCircuit "1" ..> "0..2" BlockBulkCircuit : Dependency
+BlockDepthsCircuit "1" ..> "0..2" RecursiveBulksCircuit : Dependency
+```
+
+### Circuit Cascading
+
+So the circuits are organized as below (`FP(Circuit)` is short for `FingerPrint(Circuit.Vkey)`):
+
+```
+# for BlockChain circuits
+
+MidLevel.UnitFp   = FP(BaseLevel)
+UpperLevel.UnitFp = FP(MidLevel)
+
+BlockChainHybridCircuit(n) : {1, ..., 18, 37, 56, 75}
+
+BlockChainFpSet :=  {    
+                        FP(BlockChainCircuit), 
+                        FP(BlockChainHybridCircuit(1)), ..., FP(BlockChainHybridCircuit(18)), 
+                        FP(BlockChainHybridCircuit(37)), FP(BlockChainHybridCircuit(56)), FP(BlockChainHybridCircuit(75))
+                    }
+
+BlockChainCircuit.UnitFps          = {FP(BaseLevel), FP(UpperLevel)}
+BlockChainCircuit.SelfFps          = BlockChainFpSet
+
+BlockChainHybridCircuit(n).UnitFps = {FP(UpperLevel)}
+BlockChainHybridCircuit(n).SelfFps = BlockChainFpSet
+
+# for BlockDepth circuits
+
+BlockBulkCircuit(n)      : {9, ..., 24, 72}
+RecursiveBulksCircuit(n) : {1, ..., 18, 36, 72}
+
+BlockBulkFpSet :=       {
+                            FP(BlockBulkCircuit(9)), ..., FP(BlockBulkCircuit(24)),
+                            FP(BlockBulkCircuit(72))
+                        }
+
+RecursiveBulksFpSet :=  {
+                            FP(RecursiveBulksCircuit(1)), ..., FP(RecursiveBulksCircuit(18)),
+                            FP(RecursiveBulksCircuit(36)), FP(RecursiveBulksCircuit(72)),
+                        }
+
+DepthFpSet := BlockBulkFpSet UNION RecursiveBulksFpSet
+
+RecursiveBulksCircuit(n).UnitFps = {FP(BlockBulkCircuit(24)), FP(BlockBulkCircuit(72))} 
+RecursiveBulksCircuit(n).SelfFps = RecursiveBulksFpSet
+```
+
+`UnitFp(s)` and `SelfFps` are concepts from [chainark](https://github.com/lightec-xyz/chainark):
+
+* `UnitFp` or `UnitFps` (an array) is used to restrict which inner circuit is acceptable. It is created as circuit constant to its enclosing circuit, such that the value changes shall result in a different circuit.
+* `SelfFps` is used to specify a set of circuits including the `self` circuit, so that each circuit in the set could verify proofs from other circuits from the same set. That means each circuit in the set should be able to verify a proof generated by itself (in an earlier invocation). This is how we achieve recursive verification for the entire Bitcoin chain. `SelfFps` is public witness to its enclosing circuit. 
+
+Finally, `DepositTxCircuit` is in charge of generating proofs to be submitted to Ethereum for the purpose of minting `zkBTC` tokens. Among other verifications, it recursively verifies:
+
+* one `BlockChainCircuit` or `BlockChainHybridCircuit(n)` proof
+```
+DepositTxCircuit.BlockChain.UnitFps = BlockChainFpSet
+```
+* two proofs from `BlockBulkCircuit(n)` or `RecursiveBulksCircuit(n)`, one for `Transaction Depth` verification, another for `CheckPoint Depth` verification
+```
+DepositTxCircuit.BlockDepths.UnitFps = DepthFpSet
+```
+
 ### CheckPoint
 
 #### Estimating CheckPoint Depth
@@ -126,13 +326,13 @@ In case the transaction is even deeper than the checkpoint or just rests in the 
 ```
 
 We assume the Ethereum timestamp as obtained by `block.timestamp` is very close to real-time as of the contract execution ([ref](https://ethereum.stackexchange.com/questions/5927/how-would-a-miner-cope-with-a-huge-block-time)). However, since the Bitcoin transaction and its enclosing block could be generated by the adversary, its timestamp could not be trusted. As `cp_depth` could also be derived from the adversary's fork chain, it is also not reliable. 
-```Solidity
-    estimated_depth = (eth_block.timestamp - cp_block.timestamp) / 600;
-```
 
 Alternatively, we could compute the average interval between checkpoint and 'now' and then estimate the depth. However, this computation requires unreliable `cp_depth`.
 
 We assume a 10-minute average block interval here. This interval is often *not* the actual case. A variation of 10% is relatively common and is handled with allowance. See the following sections.
+```Solidity
+    estimated_depth = (eth_block.timestamp - cp_block.timestamp) / 600;
+```
 
 What if the proof submission is purposefully delayed such that `eth_block.timestamp` is much later than it should have been? In that case, the `estimated_depth` would be larger than the actual value. This does the adversary no good. For the same reason, a valid deposit might be declined if the submission is delayed for too long. Fortunately, this will not happen a lot in our proving-as-mining incentive setting. Every miner will do their best to submit proof as soon as possible to earn proving rewards.
 
@@ -175,7 +375,18 @@ Note that `better_estimation` is unknown to the smart contract and is used here 
 
 There is another source of *free* depth besides what we have discussed so far. If there are lots of new mining power joining the game, the average block interval could be greatly shrunk.
 
-Let's discuss a concrete yet hypothetical case, that after a checkpoint is selected only a few blocks after a new mining difficulty had been settled. Immediately after the checkpoint selectioin, some mining power joins the game just to drive the average block time to below 8 minutes instead of 10. 20 hours later, the main-net generates 150 new blocks intead of 120. The excessive 30 new blocks give the adversary a huge boost.
+Let's discuss a concrete yet hypothetical case, that after a checkpoint is selected only a few blocks after a new mining difficulty had been settled. Immediately after the checkpoint selectioin, some mining power joins the game just to drive the average block time to below 8 minutes instead of 10. 20 hours later, the main-net generates 150 new blocks intead of 120. The excessive 30 new blocks give the adversary a huge boost. The adversary could take quite some time to mine some new blocks and still meet the checkpoint depth requirement.
+
+Our solution is to derive the actual average block interval from the block data, and prove it with the zkp circuit. Then the smart contract may check the proven block interval carefully and decide that:
+
+* if the proven interval is shorter than 10 minutes, use it to estimate the checkpoint depth;
+* otherwise, keep using the 10-minutes interval.
+
+Remember we mentioned earlier that the proof could be generated by the adversary, and the timestamp could be manipulated especially for the block enclosing the transaction or the chain tip (we are talking about defense in depth here so we do not count in the signature to the chain tip). Under this situation, the proven interval could be made very close to 10 minutes. Then the smart contract uses the 10-minute interval to estimate the checkpoint depth, and free depth is awarded to adversary. We must use the timestamp less likely to be manipulated. 
+
+And we do have options. The smart contract imposes a minimal depth requirement for the checkpoint, which is set to 72 as of the time of this writing. So we could trace back 24 blocks from the chain tip, and calculate the average interval between this point and the checkpoint. We have at least 48 blocks counted in. This provides good enough estimation except in the case when the mining difficulty adjustment is not included. The adversary could attempt to mine at least 25 blocks, however, this is very computation intensive. We will get back to this issue at the end of this Checkpoint subsection.
+
+On the other hand and in the worst case, if the mining difficulty adjustment happens right at the beginning of the 24 excluded-from-average blocks, and assuming to the extent that the main-net starts to generate new blocks every 8 minutes, the adversary could obtain at most `24 - (24 * 8 / 10) = 4.8` free blocks. This is still not directly usable to the adversary, as these blocks are generated by the main-net.
 
 #### Putting Everything Together
 
@@ -183,7 +394,7 @@ We need to find out the threshold of hashing power that an adversary must comman
 ```Solidity
     estimated_depth = (eth_block.timestamp - (cp_block.true_timestamp + 7200)) / 600
                     = better_estimation - free_depth;
-    free_depth      = 12;
+    free_depth      = 12 + 4.8 ~= 17;
     required_minimal_depth = estimated_depth - allowance;
     allowance = 7 + depth/4
 ```
@@ -205,26 +416,32 @@ During this period, the checkpoint depth that the attacker would obtain will lag
 
 The attacker needs `cp_depth_diff <= allowance`. But since there could be free depth, he needs only `cp_depth_diff <= allowance + free_depth` or:
 ```golang
-    // D * (100/x - 1) <= allowance + free_depth <--> x >= 100*D/(allowance + D + 12)
-    // (allowance + D + 12) must be positive
+    // D * (100/x - 1) <= allowance + free_depth <--> x >= 100*D/(allowance + D + 17)
+    // (allowance + D + 17) must be positive
 ```
 
 Solving the above inequalities for `(D, allowance) = (9, 10)`:
 ```golang
-    // x >= 900/(9 + 10 + 12) = 29.0
+    // x >= 900/(9 + 10 + 17) = 25.0
 ```
 And for `(D, allowance) = (12, 10), (18, 12), (24, 13)`
 ```golang
-    // x >= 1200/(12 + 10 + 12) = 35.2
-    // x >= 1800/(18 + 12 + 12) = 42.8
-    // x >= 2400/(24 + 13 + 12) = 49.0
+    // x >= 1200/(12 + 10 + 17) = 30.8
+    // x >= 1800/(18 + 12 + 17) = 38.3
+    // x >= 2400/(24 + 13 + 17) = 44.4
 ```
 
 Note that we were talking about average cases. There are small chances that the attacker mines more blocks sooner than average. However, the block time variation has been handled with the allowance value (see earlier sections).
 
 The `tx_depth` requirement for a checkpoint candidate is set to 36 (with `allowance` set to 16):
 ```golang
-    // x >= 3600/(36 + 16 + 12) = 56.3
+    // x >= 3600/(36 + 16 + 17) = 52.2
+```
+
+Note that we include the 4.8 free depth from the rare situation, and the 12 free depth is also not easy to obtain for the adversary. So the above numbers are for the worse case. The actual safety margin is better. For example, we might consider when the free depth is at most 6 instead of 17 for `(D, allowance) = (9, 10), (36, 16)`:
+```golang
+    // x >= 900 /( 9 + 10 + 6) = 36.0 (compared to 25.0)
+    // x >= 3600/(36 + 16 + 6) = 62.1 (compared to 52.2)
 ```
 
 #### Escalating the Depth Requirement
@@ -241,6 +458,201 @@ Nonetheless, our security architecture does not rely on the actual block interva
 
 To recover from this situation, the mainnet must have mined blocks faster than the 10-minute expectation to compensate for the 'lost depth'. This could happen a while after the attacker has stopped without gains, or more honest hashing power joins the mining as their owners see the opportunity or the difficulty adjustment results in a lower difficulty due to a prolonged average block interval and hence faster block mining.
 
+#### Revisiting the Free Depth from Consensus
+
+To be specific, let's assume the checkpoint is very deep already and there are lots of free depth. The adversary manages to mine 25 blocks in the fork chain, with the timestamp manipulated so that the computed interval `interval = (section_end_timestamp - checkpoint_timestamp) / nb_blocks` is close to 10 minutes. Then the adversary could have all those free depth to meet the checkpoint depth requirements. Of course since 25 blocks have been in the fork chain, the transaction depth requirement is also meet for transactions not too large. Can he get away? Not if we simply enforce the consensus rule that any block's timestamp cannot be more than 2 hours in the future of the network adjusted time. Since there is *no* network adjusted time in the context of ZKP, we consider using the median timestamp of the past 11 blocks plus some average interval multiplied by 6. This average interval should be capped at 15 minutes. (see [issue #4](https://github.com/lightec-xyz/zkBTC-Security/issues/4)).
+
+Now assuming the fast block generation (one block per `r` minutes, `r < 10`) has been lasting for `h` hours (`60h` minutes) since the checkpoint, and the adversary has `x%` of hashing power of all honest miners combined. The adversary will have to spend `max(D, 25) * r / (x/100) = 100mr/x` minutes to mine at least 25 blocks, where `m` denotes `max(D,25)`. The estimated checkpoint depth, assuming he is able to instantly compute the proof, would be `(100mr/x + 60h) / maniputed_interval`. Since the adversary manipulated the timestamp to get additional 2 hours, we have `maniputed_interval = (2 + h)*60/(60h/r) = r(2+h)/h`. Finally, the estimated checkpoint depth is `(100mr/x + 60h) / (r(2+h)/h) = (100mr/x + 60h)h/(r(2+h))`.
+
+Yet the adversary could only prove `60h/r + 25` blocks.  
+
+Solve `60h/r + 25 >= (100mr/x + 60h)h/(r(2+h)) - allowance` for various `r`, `h` values and `(D, allowance)` combinations:
+
+$$60h/r + 25 \ge (100mr/x + 60h)h/(r(2+h)) - allowance$$
+
+$$ \iff (60h/r + 25 + allowance) * r * (2+h) \ge (100mr/x + 60h)h $$
+
+$$ \iff (60h + 25r + allowance * r) * (2+h)/h \ge (100mr/x + 60h)$$
+
+$$ \iff (60h + 25r + allowance * r) * 2/h + 25r + allowance*r \ge 100mr/x$$
+
+$$ \iff 120 + 50r/h + allowance * r * 2/h + 25r + allowance*r \ge 100mr/x$$
+
+$$ \iff x \ge 100mr/(120 + 50r/h + allowance * r * 2/h + 25r + allowance*r) $$
+
+| r    |    h   |    D    |   allowance  |    x    |
+| :-------- | ------- | ------- | ------- | ------- |
+| 8 | 6 | 9 | 10 | 40 |
+| 8 | 6 | 12 | 10 | 40 |
+| 8 | 6 | 18 | 11 | 39 |
+| 8 | 6 | 24 | 13 | 38 |
+| 8 | 6 | 36 | 16 | 51 |
+| 8 | 6 | 48 | 19 | 65 |
+| 8 | 6 | 72 | 25 | 88 |
+| 8 | 12 | 9 | 10 | 44 |
+| 8 | 12 | 12 | 10 | 44 |
+| 8 | 12 | 18 | 11 | 43 |
+| 8 | 12 | 24 | 13 | 42 |
+| 8 | 12 | 36 | 16 | 57 |
+| 8 | 12 | 48 | 19 | 72 |
+| 8 | 12 | 72 | 25 | 98 |
+| 8 | 18 | 9 | 10 | 46 |
+| 8 | 18 | 12 | 10 | 46 |
+| 8 | 18 | 18 | 11 | 45 |
+| 8 | 18 | 24 | 13 | 43 |
+| 8 | 18 | 36 | 16 | 59 |
+| 8 | 18 | 48 | 19 | 75 |
+| 8 | 18 | 72 | 25 | 102 |
+| 8 | 24 | 9 | 10 | 47 |
+| 8 | 24 | 12 | 10 | 47 |
+| 8 | 24 | 18 | 11 | 46 |
+| 8 | 24 | 24 | 13 | 44 |
+| 8 | 24 | 36 | 16 | 60 |
+| 8 | 24 | 48 | 19 | 76 |
+| 8 | 24 | 72 | 25 | 104 |
+| 8 | 30 | 9 | 10 | 47 |
+| 8 | 30 | 12 | 10 | 47 |
+| 8 | 30 | 18 | 11 | 46 |
+| 8 | 30 | 24 | 13 | 45 |
+| 8 | 30 | 36 | 16 | 61 |
+| 8 | 30 | 48 | 19 | 77 |
+| 8 | 30 | 72 | 25 | 105 |
+| 8 | 36 | 9 | 10 | 48 |
+| 8 | 36 | 12 | 10 | 48 |
+| 8 | 36 | 18 | 11 | 47 |
+| 8 | 36 | 24 | 13 | 45 |
+| 8 | 36 | 36 | 16 | 61 |
+| 8 | 36 | 48 | 19 | 78 |
+| 8 | 36 | 72 | 25 | 106 |
+| 8 | 48 | 9 | 10 | 48 |
+| 8 | 48 | 12 | 10 | 48 |
+| 8 | 48 | 18 | 11 | 47 |
+| 8 | 48 | 24 | 13 | 45 |
+| 8 | 48 | 36 | 16 | 62 |
+| 8 | 48 | 48 | 19 | 79 |
+| 8 | 48 | 72 | 25 | 107 |
+| 8 | 60 | 9 | 10 | 48 |
+| 8 | 60 | 12 | 10 | 48 |
+| 8 | 60 | 18 | 11 | 47 |
+| 8 | 60 | 24 | 13 | 46 |
+| 8 | 60 | 36 | 16 | 62 |
+| 8 | 60 | 48 | 19 | 79 |
+| 8 | 60 | 72 | 25 | 108 |
+| 8 | 72 | 9 | 10 | 49 |
+| 8 | 72 | 12 | 10 | 49 |
+| 8 | 72 | 18 | 11 | 48 |
+| 8 | 72 | 24 | 13 | 46 |
+| 8 | 72 | 36 | 16 | 63 |
+| 8 | 72 | 48 | 19 | 79 |
+| 8 | 72 | 72 | 25 | 108 |
+| 8 | 144 | 9 | 10 | 49 |
+| 8 | 144 | 12 | 10 | 49 |
+| 8 | 144 | 18 | 11 | 48 |
+| 8 | 144 | 24 | 13 | 46 |
+| 8 | 144 | 36 | 16 | 63 |
+| 8 | 144 | 48 | 19 | 80 |
+| 8 | 144 | 72 | 25 | 109 |
+| 8 | 288 | 9 | 10 | 49 |
+| 8 | 288 | 12 | 10 | 49 |
+| 8 | 288 | 18 | 11 | 48 |
+| 8 | 288 | 24 | 13 | 46 |
+| 8 | 288 | 36 | 16 | 64 |
+| 8 | 288 | 48 | 19 | 81 |
+| 8 | 288 | 72 | 25 | 110 |
+| 8 | 576 | 9 | 10 | 50 |
+| 8 | 576 | 12 | 10 | 50 |
+| 8 | 576 | 18 | 11 | 48 |
+| 8 | 576 | 24 | 13 | 47 |
+| 8 | 576 | 36 | 16 | 64 |
+| 8 | 576 | 48 | 19 | 81 |
+| 8 | 576 | 72 | 25 | 110 |
+| 9 | 6 | 9 | 10 | 41 |
+| 9 | 6 | 12 | 10 | 41 |
+| 9 | 6 | 18 | 11 | 40 |
+| 9 | 6 | 24 | 13 | 39 |
+| 9 | 6 | 36 | 16 | 52 |
+| 9 | 6 | 48 | 19 | 66 |
+| 9 | 6 | 72 | 25 | 90 |
+| 9 | 12 | 9 | 10 | 46 |
+| 9 | 12 | 12 | 10 | 46 |
+| 9 | 12 | 18 | 11 | 45 |
+| 9 | 12 | 24 | 13 | 43 |
+| 9 | 12 | 36 | 16 | 58 |
+| 9 | 12 | 48 | 19 | 74 |
+| 9 | 12 | 72 | 25 | 100 |
+| 9 | 18 | 9 | 10 | 47 |
+| 9 | 18 | 12 | 10 | 47 |
+| 9 | 18 | 18 | 11 | 46 |
+| 9 | 18 | 24 | 13 | 45 |
+| 9 | 18 | 36 | 16 | 61 |
+| 9 | 18 | 48 | 19 | 77 |
+| 9 | 18 | 72 | 25 | 104 |
+| 9 | 24 | 9 | 10 | 48 |
+| 9 | 24 | 12 | 10 | 48 |
+| 9 | 24 | 18 | 11 | 47 |
+| 9 | 24 | 24 | 13 | 45 |
+| 9 | 24 | 36 | 16 | 62 |
+| 9 | 24 | 48 | 19 | 78 |
+| 9 | 24 | 72 | 25 | 106 |
+| 9 | 30 | 9 | 10 | 49 |
+| 9 | 30 | 12 | 10 | 49 |
+| 9 | 30 | 18 | 11 | 48 |
+| 9 | 30 | 24 | 13 | 46 |
+| 9 | 30 | 36 | 16 | 63 |
+| 9 | 30 | 48 | 19 | 79 |
+| 9 | 30 | 72 | 25 | 108 |
+| 9 | 36 | 9 | 10 | 49 |
+| 9 | 36 | 12 | 10 | 49 |
+| 9 | 36 | 18 | 11 | 48 |
+| 9 | 36 | 24 | 13 | 46 |
+| 9 | 36 | 36 | 16 | 63 |
+| 9 | 36 | 48 | 19 | 80 |
+| 9 | 36 | 72 | 25 | 108 |
+| 9 | 48 | 9 | 10 | 50 |
+| 9 | 48 | 12 | 10 | 50 |
+| 9 | 48 | 18 | 11 | 49 |
+| 9 | 48 | 24 | 13 | 47 |
+| 9 | 48 | 36 | 16 | 64 |
+| 9 | 48 | 48 | 19 | 81 |
+| 9 | 48 | 72 | 25 | 110 |
+| 9 | 60 | 9 | 10 | 50 |
+| 9 | 60 | 12 | 10 | 50 |
+| 9 | 60 | 18 | 11 | 49 |
+| 9 | 60 | 24 | 13 | 47 |
+| 9 | 60 | 36 | 16 | 64 |
+| 9 | 60 | 48 | 19 | 81 |
+| 9 | 60 | 72 | 25 | 110 |
+| 9 | 72 | 9 | 10 | 50 |
+| 9 | 72 | 12 | 10 | 50 |
+| 9 | 72 | 18 | 11 | 49 |
+| 9 | 72 | 24 | 13 | 47 |
+| 9 | 72 | 36 | 16 | 64 |
+| 9 | 72 | 48 | 19 | 81 |
+| 9 | 72 | 72 | 25 | 111 |
+| 9 | 144 | 9 | 10 | 51 |
+| 9 | 144 | 12 | 10 | 51 |
+| 9 | 144 | 18 | 11 | 50 |
+| 9 | 144 | 24 | 13 | 48 |
+| 9 | 144 | 36 | 16 | 65 |
+| 9 | 144 | 48 | 19 | 82 |
+| 9 | 144 | 72 | 25 | 112 |
+| 9 | 288 | 9 | 10 | 51 |
+| 9 | 288 | 12 | 10 | 51 |
+| 9 | 288 | 18 | 11 | 50 |
+| 9 | 288 | 24 | 13 | 48 |
+| 9 | 288 | 36 | 16 | 65 |
+| 9 | 288 | 48 | 19 | 83 |
+| 9 | 288 | 72 | 25 | 113 |
+| 9 | 576 | 9 | 10 | 51 |
+| 9 | 576 | 12 | 10 | 51 |
+| 9 | 576 | 18 | 11 | 50 |
+| 9 | 576 | 24 | 13 | 48 |
+| 9 | 576 | 36 | 16 | 66 |
+| 9 | 576 | 48 | 19 | 83 |
+| 9 | 576 | 72 | 25 | 113 |
+
+`x` is at least 38. Looks fine already, and even more so considering that the fast block generation does not happen a lot.
+
 ### Defense in Depth - Replacing Chain Tip Signature with More Depth Requirements
 
 In the discussion, the chain tip's signature has become the single point of failure (SPoF). That is, if, for some reason, the ICP canister cannot sign the Bitcoin tip block, then we cannot generate proof that it is acceptable to the deployed smart contract. To overcome this hurdle, we could replace the signature with more depth requirements.
@@ -249,8 +661,8 @@ Our current practice is to double the depth requirements, and update the allowan
 
 With this design, we have two new depth requirements: (D, allowance) = (48, 19), (72, 25). The hashing power requirements for the attacker are:
 ```golang
-    // x >= 4800/(48 + 19 + 12) = 60.8
-    // x >= 7200/(72 + 25 + 12) = 66.1
+    // x >= 4800/(48 + 19 + 17) = 57.1
+    // x >= 7200/(72 + 25 + 17) = 63.2
 ```
 
 ## Securing Redemption
