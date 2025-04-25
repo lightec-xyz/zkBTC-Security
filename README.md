@@ -101,6 +101,7 @@ Third-party services could enhance UX since zkBTC is designed to be fully decent
 
 ## Audit Reports
 
+zkBTC is ongoing rigid security audits. We split the code base into three parts. The first and the second part have been audited and we have obtained the final reports. This includes the [PR to gnark](https://github.com/Consensys/gnark/pull/1040) to add BLS signature verification for the BLS12-381 curve. The third part is being audited. We plan to publish all audit reports once the third audit is finalized.
 
 ## Securing Deposits
 
