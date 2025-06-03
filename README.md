@@ -6,14 +6,14 @@ This document is the security document for the [zkBTC decentralized bridge](http
 
 zkBTC is a ZKP-based bridge that securely bridges Bitcoin to Ethereum and all other major L1s and L2s. The basic workflow are:
 
-* Deposit—The user sends $BTC to a designated operator address. Such a transaction is proved, and the proof is verified in an Ethereum smart contract. After successful verification, the smart contract mints $zkBTC tokens and transfers these tokens to the address supplied along with the deposit (in an `OP_RETURN` output). The smart contract will manage the newly created UTXOs from this deposit. The miner who computes the proof and submits it on the user's behalf will receive rewards.
+* Deposit—The user sends $BTC to a designated operator address. Such a transaction is proved, and the proof is verified in an Ethereum smart contract. After successful verification, the smart contract mints $zkBTC tokens and transfers these tokens to the address supplied along with the deposit (in an `OP_RETURN` output). The smart contract will manage the newly created unspent transaction outputs (UTXOs) from this deposit. The miner who computes the proof and submits it on the user's behalf will receive rewards.
 * Use—Users can use $zkBTC tokens in any way they wish; they are equivalent to $BTC in the Ethereum ecosystem.
-* Redemption—The user calls an Ethereum smart contract function to burn some $zkBTC tokens. The function will also leave some transaction logs specifying which available UTXOs will be spent. Specifically, the smart contract will choose which UTXOs to spend this time and record related information in the logs. The miner reward is delayed.
-* Change and miner reward. To bring back the change UTXO and reward the miner that computes proof for redemption, another proof about the redemption transaction in Bitcoin could be provided to the smart contract.
+* Redemption—The user calls an Ethereum smart contract function to burn some $zkBTC tokens. The function will also leave some transaction logs specifying which available UTXOs to spend. Specifically, the smart contract will select which UTXOs to spend this time and record related information in the logs. The miner reward is delayed.
+* Change and miner reward. Another proof of the redemption transaction in Bitcoin can be provided to the smart contract to bring back the change UTXO and to reward the miner who computes proof for redemption.
 
 For more information and general use, please check out our [Gitbook](https://lightec.gitbook.io/lightecxyz).
 
-We designed zkBTC to be fully decentralized, without any central role in operating on the users' assets. To achieve such an ambitious goal, we proposed to add an `OP_ZKP` opcode to Bitcoin so that Bitcoin can verify zero-knowledge proof as spending conditions of UTXOs. This way, there are no private keys to be managed at all for the `Redemption.` To redeem back to Bitcoin, one must submit proof meeting specific criteria. Finding a ZKP scheme for `OP_ZKP` has proven difficult, yet we have a draft [here](https://github.com/opzkp/tea-horse).
+We designed zkBTC to be fully decentralized, with no central role in operating on users' assets. To achieve such an ambitious goal, we propose adding an `OP_ZKP` opcode to Bitcoin, enabling it to verify zero-knowledge proofs as spending conditions for UTXOs. This way, there are no private keys to be managed at all for the `Redemption.` To redeem back to Bitcoin, one must submit proof meeting specific criteria. Finding a ZKP scheme for `OP_ZKP` has proven difficult, yet we have a draft [here](https://github.com/opzkp/tea-horse).
 
 Before `OP_ZKP` could be realized, we also have an alternative solution, which is to have multiple safe platforms to manage private keys such that:
 
@@ -91,17 +91,17 @@ func InCircuitFingerPrint[FR emulated.FieldParams, G1El algebra.G1ElementT, G2El
 
 ### Defense in Depth
 
-A single-factor defense might attract potential adversaries. Therefore, we designed the system with defense in depth in mind. For deposit, we rely on the ICP's Bitcoin integration to sign off on the `chain tip` and the `CheckPoint` mechanism. For redemption, two of three multi-sig also provide fault tolerance. See related sections for more details.
+A single-factor defense might attract potential adversaries. Therefore, we designed the system with defense-in-depth in mind. For deposit, we rely on the ICP's Bitcoin integration to sign off on the `chain tip` and the `CheckPoint` mechanism. For redemption, two of three multi-sig also provide fault tolerance. See related sections for more details.
 
 ### Security over UX
 
-zkBTC is designed to be fully decentralized, so there is no central role in operating the risk parameters. We have to assume the worst case and defend zkBTC against it. Therefore, the UX has to yield in case there is a conflict. For example, we require each Bitcoin deposit transaction to have a confirmation depth of at least twelve instead of six. There are many more such examples throughout this document.
+zkBTC is designed to be fully decentralized, so there is no central role in operating the risk parameters. We must assume the worst-case scenario and defend zkBTC against it. Therefore, the UX must yield in the event of a conflict. For example, we require each Bitcoin deposit transaction to have a confirmation depth of at least twelve instead of six. There are many more examples like this throughout the document.
 
-Third-party services could enhance UX since zkBTC is designed to be fully decentralized. The basic idea is for the third-party service to deposit to the zkBTC system, obtain some zkBTC tokens, and later provide those tokens to users with better UX. Of course, third parties are free to define their business models. 
+Third-party services could enhance the user experience (UX) since zkBTC is designed to be fully decentralized. The basic idea is for the third-party service to deposit into the zkBTC system, obtain some zkBTC tokens, and later provide those tokens to users with a better user experience. Of course, third parties are free to define their business models. 
 
 ## Audit Reports
 
-zkBTC is ongoing rigid security audits. We split the code base into three parts. The first and the second part have been audited and we have obtained the final reports. This includes the [PR to gnark](https://github.com/Consensys/gnark/pull/1040) to add BLS signature verification for the BLS12-381 curve. The third part is being audited. We plan to publish all audit reports once the third audit is finalized.
+zkBTC is ongoing rigid security audits. We split the code base into three parts. The first and second parts have been audited, and we have obtained the final reports. This includes the [PR to gnark](https://github.com/Consensys/gnark/pull/1040) to add BLS signature verification for the BLS12-381 curve. The third part is being audited. We plan to publish all audit reports once the third audit is finalized.
 
 ## Securing Deposits
 
@@ -111,22 +111,22 @@ We have designed three defenses against potential attacks, layered in depth:
 
 * `DepositTxCircuit.SigVerif` checks if the `chain tip` (the latest block hash) is signed by a `DFinity` canister. This is the initial implementation of our long-term security design of decentralized roles signing off the `chain tip`.
 * The `Transaction Depth` check demands that each deposit transaction have a certain confirmation depth. Note that the commonly recommended depth of `6` is based on on-chain verification, while in our system, it is essentially an off-chain verification. Therefore, we require at least `12` for small deposits and even deeper for large deposits.
-* The `CheckPoint Depth` check demands that the enclosing block for each transaction is one of the descendants of a certain recognized `CheckPoint` (also a Bitcoin block hash).
+* The `CheckPoint Depth` check demands that the enclosing block for each transaction is one of the descendants of a particular recognized `CheckPoint` (also a Bitcoin block hash).
 
-Now, assuming some potent attacker commanding lots of hashing power has already cracked the first defense, the decentralized roles to sign off the chain tip. It still has to manage enough checkpoint depth. The attacker won't be able to meet both the `Transaction Depth` requirement and the `CheckPoint Depth` requirement if we set proper checking rules in the smart contract. Before discussing any specific rules, we must point out the obvious: it is impossible to pass all legit blocks without passing some offending blocks if the adversary indeed masters too much hashing power. Our aim here is not to reject all offending blocks but to make it as computation-intensive as possible for adversaries, such that attacking us is not economically desirable.
+Now, assuming a potent attacker with a significant amount of hashing power has already cracked the first defense, the decentralized roles to sign off on the chain tip. It still needs to maintain sufficient checkpoint depth. The attacker won't be able to meet both the `Transaction Depth` requirement and the `CheckPoint Depth` requirement if we set proper checking rules in the smart contract. Before discussing any specific rules, we must point out the obvious: it is impossible to pass all legit blocks without passing some offending blocks if the adversary indeed masters too much hashing power. Our aim here is not to reject all offending blocks, but to make it as computationally intensive as possible for adversaries, such that attacking us is not economically desirable.
 
-### Circuits Diagrms
+### Circuits Diagrams
 
 #### depth circuits
 
-depth circuits proves that BlockM is ancestor of BlockN, and prove that the depth from BlockM to BlockN is n-m.
+Depth circuits prove that BlockM is the ancestor of BlockN and prove that the depth from BlockM to BlockN is n-m.
 
 **note:** The minimum depth of tx is 12, and the minimum depth of cp is 72
 
-These circuits includes 2 groups external circuits:
+These circuits include two groups of external circuits:
 
-* `BlockBulkCircuit`, prove hat when the depth is 9-24 or 72.
-* `RecursiveBulksCircuit`,  prove that when the depth is > 24. RecursiveBulksCircuit is based on the BlockBulkCircuit proof with a depth of 24 or 72, and then absorbs a depth of 1-9, 18, 36, or 72, repeatedly recursing on itself.
+* `BlockBulkCircuit` proves that when the depth is 9-24 or 72.
+* `RecursiveBulksCircuit` proves that when the depth is > 24. RecursiveBulksCircuit is based on the BlockBulkCircuit proof with a depth of 24 or 72 and then absorbs a depth of 1-9, 18, 36, or 72, repeatedly recursing on itself.
 
 ![depths](docs/depths.drawio.svg)
 
@@ -183,13 +183,13 @@ class MultiUnit["chainark.MultiUnit"]{
 
 #### BlockChain circuit
 
-BlockChain circuits prove that a chain is formed from genesis block to blockN, and prove that the difficulty adjustment every 2016 blocks meets the rules.
+`BlockChain` circuits prove that a chain is formed from the genesis block to the blockN, and prove that the difficulty adjustment of every 2016 blocks meets the rules.
 
-BlockChain circuits are based on chainark. There are 3 auxiliary circuits:
+`BlockChain` circuits are based on chainark. There are three auxiliary circuits:
 
-* `BaseLevelCircuit` proves that 112 blocks form a chain, called a batch.
-* `MidLevelCircuit` proves that 6 batches form a chain, each with 112 blocks. Total is 672 blocks, called a super batch.
-* `UpperLevelCircuit` proves that 3 super batches form a chain. Total is 2016 blocks.
+* `BaseLevelCircuit` proves that 112 blocks form a chain called a batch.
+* `MidLevelCircuit` proves that six batches form a chain, each with 112 blocks. Total is 672 blocks, called a super batch.
+* `UpperLevelCircuit` proves that three super batches form a chain. The total is 2016 blocks.
 
 Then there are one `BlockChainCircuit` and multiple `BlockChainHybridCircuit`:
 
@@ -200,20 +200,20 @@ Detailed design ![here](docs/blockchain.drawio.svg)
 
 #### tx circuits
 
-tx circuits proves that `deposit` or `redeem` transaction is on-chain and the depth of the tx meets `the minimum tx depth`. The chain is formed from `the genesis block` to `the latest block`, meets the difficulty adjustment rules, and passes through a well-known `checkpoint block`. The genesis block is well known, and the latest block is accepted and signed by a designated `DFinity` canister.
+The tx circuits prove that the `deposit` or `redeem` transaction is on-chain and the depth of the tx meets `the minimum tx depth`. The chain is formed from `the genesis block` to `the latest block`, meets the difficulty adjustment rules, and passes through a well-known `checkpoint block`. The genesis block is well known, and the latest block is accepted and signed by a designated `DFinity` canister.
 
 The tx circuits contain other circuit proofs and circuit components:
 
-* `BlockChainProof`, proves that a consensus chain is formed from the genesis block to the latest block.
-* `CpDepthPoof`, proves that the chain passes through the well-known checkpoint block and its depth meets the minimum cp depth.
-* `TxInBlockCircuit` and `TxDepthPoof`, prove that tx is in a block and the depth of the block on the chain meets the minimum tx depth.
-* `EcdsaSigVerif`, proves that the latest block of this chain was accepted and signed by Dfinity.
-* `RedeemInEthProof`, proves that the redeem tx in ETH has been finalized on the ETH chain.
+* `BlockChainProof` proves that a consensus chain is formed from the genesis block to the latest block.
+* `CpDepthPoof` proves that the chain passes through the well-known checkpoint block, and its depth meets the minimum cp depth.
+* `TxInBlockCircuit` and `TxDepthPoof` prove that tx is in a block and the depth of the block on the chain meets the minimum tx depth.
+* `EcdsaSigVerif` proves that the latest block of this chain was accepted and signed by Dfinity.
+* `RedeemInEthProof` proves that the redeem tx in ETH has been finalized on the ETH chain.
 
-The tx circuits 2 external circuits:
+The tx circuits contain two external circuits:
 
-* `DepositTxCircuit`, proves that the deposit tx in BTC has been confirmed by the specified minimum depth on the BTC chain.
-* `RedeemTxCircuit`, proves that the redeem tx in BTC has been confirmed by the specified minimum depth on the BTC chain, and prove that its previous ETH redeem tx is also finalized on the ETH chain.
+* `DepositTxCircuit` proves that the deposit tx in BTC has been confirmed by the specified minimum depth on the BTC chain.
+* `RedeemTxCircuit` proves that the redeem tx in BTC has been confirmed by the specified minimum depth on the BTC chain and proves that its previous ETH redeem tx is also finalized on the ETH chain.
 
 ![txs](docs/txs.drawio.svg)
 
@@ -301,10 +301,10 @@ RecursiveBulksCircuit(n).SelfFps = RecursiveBulksFpSet
 
 `UnitFp(s)` and `SelfFps` are concepts from [chainark](https://github.com/lightec-xyz/chainark):
 
-* `UnitFp` or `UnitFps` (an array) is used to restrict which inner circuit is acceptable. It is created as circuit constant to its enclosing circuit, such that the value changes shall result in a different circuit.
-* `SelfFps` is used to specify a set of circuits including the `self` circuit, so that each circuit in the set could verify proofs from other circuits from the same set. That means each circuit in the set should be able to verify a proof generated by itself (in an earlier invocation). This is how we achieve recursive verification for the entire Bitcoin chain. `SelfFps` is public witness to its enclosing circuit. 
+* `UnitFp` or `UnitFps` (an array) is used to restrict which inner circuit is acceptable. It is created as a circuit constant to its enclosing circuit, such that changes in the value result in a different circuit.
+* `SelfFps` is used to specify a set of circuits, including the `self` circuit, so that each circuit in the set could verify proofs from other circuits from the same set. That means each circuit in the set should be able to verify a proof generated by itself (in an earlier invocation). This is how we achieve recursive verification for the entire Bitcoin chain. `SelfFps` is public witness to its enclosing circuit. 
 
-Finally, `DepositTxCircuit` is in charge of generating proofs to be submitted to Ethereum for the purpose of minting `zkBTC` tokens. Among other verifications, it recursively verifies:
+Finally, `DepositTxCircuit` is responsible for generating proofs to be submitted to Ethereum for the purpose of minting `zkBTC` tokens. Among other verifications, it recursively verifies:
 
 * one `BlockChainCircuit` or `BlockChainHybridCircuit(n)` proof
 ```
@@ -321,7 +321,7 @@ DepositTxCircuit.BlockDepths.UnitFps = DepthFpSet
 
 The smart contract must estimate the checkpoint depth on its own to determine whether the value presented in the proof is acceptable. 
 
-In case the transaction is even deeper than the checkpoint or just rests in the checkpoint block, we simply return true for checkpoint depth checking, as the checkpoint is trusted by the smart contract. Otherwise, our first attempt is: 
+If the transaction is even deeper than the checkpoint or simply rests in the checkpoint block, we simply return true for checkpoint depth checking, as the smart contract trusts the checkpoint. Otherwise, our first attempt is: 
 ```Solidity
     estimated_depth = (eth_block.timestamp - tx_block.timestamp) / 600 + (cp_depth - tx_depth);
 ```
@@ -335,13 +335,13 @@ We assume a 10-minute average block interval here. This interval is often *not* 
     estimated_depth = (eth_block.timestamp - cp_block.timestamp) / 600;
 ```
 
-What if the proof submission is purposefully delayed such that `eth_block.timestamp` is much later than it should have been? In that case, the `estimated_depth` would be larger than the actual value. This does the adversary no good. For the same reason, a valid deposit might be declined if the submission is delayed for too long. Fortunately, this will not happen a lot in our proving-as-mining incentive setting. Every miner will do their best to submit proof as soon as possible to earn proving rewards.
+What if the proof submission is purposefully delayed such that `eth_block.timestamp` is much later than it should have been? In that case, the `estimated_depth` would be larger than the actual value. This does the adversary no good. For the same reason, a valid deposit might be declined if the submission is delayed for too long. Fortunately, this will not happen a lot in our proving-as-mining incentive setting. Every miner will strive to submit proof as soon as possible to earn proving rewards.
 
 #### Checking CheckPoint Depth
 
-Suppose the attacker has 10% of all honest hashing power combined; on average, it has to spend at least 1200 minutes (20 hours) to meet the transaction depth requirement for a small amount deposit, which requires `tx_depth` to be at least 12. Meanwhile, around 120 new blocks have been mined in the Bitcoin mainnet. The attacker would find out the checkpoint depth deficit to be 108. If the attacker has 30% of all hashing power, numbers become 400 minutes, 40 new blocks, and 28 blocks of checkpoint depth deficit. 
+Suppose the attacker has 10% of all honest hashing power combined; on average, it must spend at least 1200 minutes (20 hours) to meet the transaction depth requirement for a small deposit, which requires `tx_depth` to be at least 12. Meanwhile, around 120 new blocks have been mined in the Bitcoin mainnet. The attacker would find out the checkpoint depth deficit to be 108. If the attacker has 30% of all hashing power, numbers become 400 minutes, 40 new blocks, and 28 blocks of checkpoint depth deficit. 
 
-The smart contract, however, needs to take care of block timestamp drift, proof generation time, block interval variance, time to broadcast the smart contract invocation transaction and include it in a block, etc. For example, the timestamp of any Bitcoin block might be as early as just a bit later than the median value of its past 11 blocks. That will generate 1 hour or about six blocks more than the actual depth since we use `eth_block.timestamp` to estimate the checkpoint depth. The smart contract will have to subtract 6 or more from its estimated depth so that a *legit* deposit won't be declined. We could leave some more time for various other factors, ranging from half to one hour. Thus:
+The smart contract, however, needs to address block timestamp drift, proof generation time, block interval variance, and time to broadcast the smart contract invocation transaction and include it in a block, among other considerations. For example, the timestamp of any Bitcoin block might be as early as just a bit later than the median value of its past 11 blocks. That will generate 1 hour, or approximately six blocks more than the actual depth since we use `eth_block.timestamp` to estimate the checkpoint depth. The smart contract will have to subtract six or more from its estimated depth so that a *legit* deposit won't be declined. We could allocate more time for various other factors, ranging from half an hour to one hour. Thus:
 ```
     required_minimal_depth = estimated_depth - allowance
 ```
@@ -353,13 +353,13 @@ Specifically, we'd like to reserve 6 for the potential checkpoint timestamp erro
     allowance = 6 + 2 + (depth - 6)/6 = 7 + depth/4
 ```
 
-Therefore, for transaction confirmation depth requirements of 12, 18, 24 and 36, which is also the checkpoint candidate depth requirement, the corresponding allowance is 10, 12, 13, and 16.
+Therefore, for transaction confirmation depth requirements of 12, 18, 24, and 36, which is also the checkpoint candidate depth requirement, the corresponding allowances are 10, 12, 13, and 16.
 
 #### Becoming a CheckPoint Candidate
 
-`CheckPoint` is maintained by the Ethereum smart contract without human intervention. The hash of the enclosing block for a **deep** enough transaction could be a candidate for a new `CheckPoint`. When it is time to rotate checkpoints, the smart contract selects a random candidate. Our security does *not* depend on how random the selection process is. Instead, we impose a depth requirement for each of the candidate such that the adversary won't be able to reach without failing the checkpoint depth test. Our security architecture weighs checkpoint safety more than individual blocks or transactions. Note that the formula of `estimated_depth` already assumes that the adversary starts to mine its own blocks based on a would-be checkpoint block when it is freshly mined. Successful guessing of the next checkpoint grants no additional advantages to adversaries.
+`CheckPoint` is maintained by the Ethereum smart contract without human intervention. The hash of the enclosing block for a **deep** enough transaction could be a candidate for a new `CheckPoint`. When it is time to rotate checkpoints, the smart contract selects a random candidate. Our security does *not* depend on how random the selection process is. Instead, we impose a depth requirement for each of the candidate such that the adversary won't be able to reach without failing the checkpoint depth test. Our security architecture prioritizes checkpoint safety over individual blocks or transactions. Note that the formula of `estimated_depth` already assumes that the adversary starts to mine its own blocks based on a would-be checkpoint block when it is freshly mined. Successful guessing of the next checkpoint grants no additional advantages to adversaries.
 
-Besides the depth requirement for checkpoint candidate, we also check if the timestamp of the checkpoint block is not too far in its past or future. According to the Bitcoin consensus rules, the timestamp of the checkpoint block could be at most 2 hours in its future, resulting in some *free* depth to adversaries. We ran some checks in the circuit to prevent this free depth from becoming too many and proved a flag, which the smart contract could check. On the other hand, if the checkpoint timestamp is in its past, legit deposit might be declined. So, the circuit also checks this case and sets a flag accordingly.
+Besides the depth requirement for the checkpoint candidate, we also verify that the timestamp of the checkpoint block is not too far in its past or future. According to the Bitcoin consensus rules, the timestamp of the checkpoint block could be at most 2 hours in its future, resulting in some *free* depth for adversaries. We ran some checks in the circuit to prevent this free depth from becoming too many and proved a flag, which the smart contract could check. On the other hand, if the checkpoint timestamp is in its past, legit deposit might be declined. So, the circuit also checks this case and sets a flag accordingly.
 
 What if the in-circuit check is unreliable enough (for example, the blocks we use to check the timestamp are ALL in their future), and the checkpoint candidate still carries a timestamp in its past or future that is too far away? 
 
@@ -374,24 +374,24 @@ Note that `better_estimation` is unknown to the smart contract and is used here 
 
 #### Free Depth from Consensus
 
-There is another source of *free* depth besides what we have discussed so far. If there are lots of new mining power joining the game, the average block interval could be greatly shrunk.
+There is another source of *free* depth beyond what we have discussed so far. If many new mining powers join the game, the average block interval could be significantly reduced.
 
-Let's discuss a concrete yet hypothetical case, that after a checkpoint is selected only a few blocks after a new mining difficulty had been settled. Immediately after the checkpoint selection, some mining power joins the game just to drive the average block time to below 8 minutes instead of 10. 20 hours later, the mainnet generates 150 new blocks intead of 120. The excessive 30 new blocks give the adversary a huge boost. The adversary could take quite some time to mine some new blocks and still meet the checkpoint depth requirement.
+Let's discuss a concrete yet hypothetical case: after a checkpoint is selected, only a few blocks after a new mining difficulty has been settled. Immediately after the checkpoint selection, some mining power joins the game solely to reduce the average block time to below 8 minutes, rather than the original 10 minutes. 20 hours later, the mainnet generates 150 new blocks instead of 120. The addition of 30 new blocks gives the adversary a significant boost. The adversary could take a considerable amount of time to mine new blocks and still meet the checkpoint depth requirement.
 
-Our solution is to derive the actual average block interval from the block data, and prove it with the zkp circuit. Then the smart contract may check the proven block interval carefully and decide that:
+Our solution is to derive the actual average block interval from the block data and prove it using the ZKP circuit. Then, the smart contract may check the proven block interval carefully and decide that:
 
 * if the proven interval is shorter than 10 minutes, use it to estimate the checkpoint depth;
-* otherwise, keep using the 10-minutes interval.
+* Otherwise, keep using the 10-minute interval.
 
-Remember we mentioned earlier that the proof could be generated by the adversary, and the timestamp could be manipulated especially for the block enclosing the transaction or the chain tip (we are talking about defense in depth here so we do not count in the signature to the chain tip). Under this situation, the proven interval could be made very close to 10 minutes. Then the smart contract uses the 10-minute interval to estimate the checkpoint depth, and free depth is awarded to adversary. We must use the timestamp less likely to be manipulated. 
+Remember we mentioned earlier that the proof could be generated by the adversary, and the timestamp could be manipulated especially for the block enclosing the transaction or the chain tip (we are talking about defense in depth here so we do not count in the signature to the chain tip). Under this situation, the proven interval could be made very close to 10 minutes. Then, the smart contract uses the 10-minute interval to estimate the checkpoint depth, and free depth is awarded to the adversary. We must use a timestamp that is less likely to be manipulated. 
 
-And we do have options. The smart contract imposes a minimal depth requirement for the checkpoint, which is set to 72 as of the time of this writing. So we could trace back 24 blocks from the chain tip, and calculate the average interval between this point and the checkpoint. We have at least 49 blocks counted in. This provides good enough estimation except in the case when the mining difficulty adjustment is not included. The adversary could attempt to mine at least 25 blocks, however, this is very computation intensive. We will get back to this issue at the end of this Checkpoint subsection.
+And we do have options. The smart contract imposes a minimal depth requirement for the checkpoint, which is set to 72 as of the time of this writing. We could trace back 24 blocks from the chain tip and calculate the average interval between this point and the checkpoint. We have at least 49 blocks counted in. This provides a good enough estimation except in the case when the mining difficulty adjustment is not included. The adversary could attempt to mine at least 25 blocks, however, this is very computation intensive. We will address this issue at the end of this Checkpoint subsection.
 
-On the other hand and in the worst case, if the mining difficulty adjustment happens right at the beginning of the 24 excluded-from-average blocks, and assuming to the extent that the mainnet starts to generate new blocks every 8 minutes, the adversary could obtain at most `24 - (24 * 8 / 10) = 4.8` free blocks. This is still not directly usable to the adversary, as these blocks are generated by the mainnet.
+On the other hand and in the worst case, if the mining difficulty adjustment happens right at the beginning of the 24 excluded-from-average blocks, and assuming to the extent that the mainnet starts to generate new blocks every 8 minutes, the adversary could obtain at most `24 - (24 * 8 / 10) = 4.8` free blocks. This is still not directly usable to the adversary, as the mainnet generates these blocks.
 
 #### Putting Everything Together
 
-We need to find out the threshold of hashing power that an adversary must command in order to defeat our checkpoint system. Given:
+We need to determine the threshold of hashing power that an adversary must possess to defeat our checkpoint system. Given:
 ```Solidity
     estimated_depth = (eth_block.timestamp - (cp_block.true_timestamp + 7200)) / 600
                     = better_estimation - free_depth;
@@ -400,7 +400,7 @@ We need to find out the threshold of hashing power that an adversary must comman
     allowance = 7 + depth/4
 ```
 
-Suppose the transaction depth requirement is D (D = 12 for small deposits, 18 for medium amounts, and 24 and 36 for even larger amounts), and the attacker commands x% hashing power compared to all honest miners combined. At some point on or after the checkpoint block, the attacker must begin to mine its own blocks. To meet the transaction depth requirement, the attacker must spend `average_attacker_time_for_D_blocks` on average, assuming the average block interval to be 10 minutes:
+Suppose the transaction depth requirement is D (D = 12 for small deposits, 18 for medium amounts, and 24 and 36 for even larger amounts), and the attacker commands x% hashing power compared to all honest miners combined. At some point on or after the checkpoint block, the attacker must begin to mine its blocks. To meet the transaction depth requirement, the attacker must spend `average_attacker_time_for_D_blocks` on average, assuming the average block interval to be 10 minutes:
 ```golang
     average_attacker_time_for_D_blocks := D * 600 / (x/100) = D * 60000/x
 ```
@@ -432,9 +432,9 @@ And for `(D, allowance) = (18, 12), (24, 13), (36, 16)`. The last one is also th
     // x >= 3600/(36 + 16 + 17) = 52.2
 ```
 
-Note that we were talking about average cases. There are small chances that the attacker mines more blocks sooner than average. However, the block time variation has been handled with the allowance value (see earlier sections).
+Note that we were talking about average cases. There are slight chances that the attacker mines more blocks sooner than average. However, the block time variation has been handled with the allowance value (see earlier sections).
 
-Note that we include the 4.8 free depth from the rare situation, and the 12 free depth is also not easy to obtain for the adversary. So the above numbers are for the worse case. The actual safety margin is better. For example, we might consider when the free depth is at most 6 instead of 17 for `(D, allowance) = (12, 10), (36, 16)`:
+Note that we include the 4.8 free depth from the rare situation, and the 12 free depth is also not easily obtainable for the adversary. The above numbers are for the worst-case scenario. The actual safety margin is better. For example, we might consider when the free depth is at most 6 instead of 17 for `(D, allowance) = (12, 10), (36, 16)`:
 ```golang
     // x >= 1200/(12 + 10 + 6) = 42.9 (compared to 30.8)
     // x >= 3600/(36 + 16 + 6) = 62.1 (compared to 52.2)
@@ -442,23 +442,23 @@ Note that we include the 4.8 free depth from the rare situation, and the 12 free
 
 #### Escalating the Depth Requirement
 
-It seems not profitable to spend at least 25% of all total-net hashing power just to make a fake deposit of a small amount. The attacker, however, no double will try to stuff as many transactions as possible into one block and hope to deposit all of them successfully.
+It seems unprofitable to spend at least 25% of the total net hashing power to make a fake deposit of a small amount. The attacker, however,  will attempt to stuff as many transactions as possible into one block and hope to deposit all of them successfully.
 
-To counter this measure, we keep the count of deposit transactions per block and escalate the depth requirement once a certain limit is reached.
+To counter this measure, we keep the count of deposit transactions per block and escalate the depth requirement once a specific limit is reached.
 
 #### An Even More Aggressive Attacker
 
-In the above discussion, we assume the attacker uses *new* hashing power instead of drawing the *existing* mining power to compute the attack. This way, the mainnet is generating new blocks at a relatively steady rate. However, if a very powerful attacker can turn some existing hashing power to attack zkBTC, then the rate at which the mainnet produces new blocks will be slowed down. And our analysis is impacted. This is the typical `p vs q` situation in the original [Bitcoin Whitepaper](https://bitcoin.org/bitcoin.pdf).
+In the above discussion, we assume the attacker uses *new* hashing power instead of drawing the *existing* mining power to compute the attack. This way, the mainnet is generating new blocks at a relatively steady rate. However, if a potent attacker can turn some existing hashing power to attack zkBTC, then the rate at which the mainnet produces new blocks will be slowed down. And our analysis is impacted. This is the typical `p vs q` situation in the original [Bitcoin Whitepaper](https://bitcoin.org/bitcoin.pdf).
 
-Nonetheless, our security architecture does not rely on the actual block interval. We use the expected 10 minutes and then `allowance` to handle any variation. So if the supposed situation does happen, then instead of invalid deposits being accepted, valid deposits might get declined as the checkpoint depth requirement cannot be met, but only temporarily.
+Nonetheless, our security architecture does not rely on the actual block interval. We use the expected 10 minutes and then `allowance` to handle any variation. If the supposed situation were to occur, then instead of invalid deposits being accepted, valid deposits might be declined as the checkpoint depth requirement cannot be met, but only temporarily.
 
 To recover from this situation, the mainnet must have mined blocks faster than the 10-minute expectation to compensate for the 'lost depth'. This could happen a while after the attacker has stopped without gains, or more honest hashing power joins the mining as their owners see the opportunity or the difficulty adjustment results in a lower difficulty due to a prolonged average block interval and hence faster block mining.
 
 #### Revisiting the Free Depth from Consensus
 
-To be specific, let's assume the checkpoint is very deep already and there are lots of free depth. The adversary manages to mine 25 blocks in the fork chain, with the timestamp manipulated so that the computed interval `interval = (section_end_timestamp - checkpoint_timestamp) / nb_blocks` is close to 10 minutes. Then the adversary could have all those free depth to meet the checkpoint depth requirements. Of course since 25 blocks have been in the fork chain, the transaction depth requirement is also meet for transactions not too large. Can he get away? Not if we simply apply the consensus rule that any block's timestamp cannot be more than 2 hours in the future of the network adjusted time. Since there is *no* network adjusted time in the context of ZKP, we consider using the median timestamp of the past 11 blocks plus their average interval multiplied by 6. (see [issue #4](https://github.com/lightec-xyz/zkBTC-Security/issues/4)). Specifically, we cap the timestamp of the last block used to compute the average interval, to the value calculated as `median(timestamp of the past 11 blocks) + average block interval(the past 11 blocks) + 2 hours`.
+Let's assume the checkpoint is very deep already, and there are lots of free depth. The adversary manages to mine 25 blocks in the fork chain, with the timestamp manipulated so that the computed interval `interval = (section_end_timestamp - checkpoint_timestamp) / nb_blocks` is close to 10 minutes. Then, the adversary could have all those free depths to meet the checkpoint depth requirements. Of course since 25 blocks have been in the fork chain, the transaction depth requirement is also meet for transactions not too large. Can he get away? Not if we apply the consensus rule that any block's timestamp cannot be more than 2 hours in the future of the network adjusted time. Since there is *no* network adjusted time in the context of ZKP, we consider using the median timestamp of the past 11 blocks plus their average interval multiplied by 6. (see [issue #4](https://github.com/lightec-xyz/zkBTC-Security/issues/4)). Specifically, we cap the timestamp of the last block used to compute the average interval to the value calculated as `median(timestamp of the past 11 blocks) + average block interval(the past 11 blocks) + 2 hours`.
 
-Now assuming the fast block generation (one block per `r` minutes, `r < 10`) has been lasting for `h` hours (`60h` minutes) since the checkpoint, and the adversary has `x%` of hashing power of all honest miners combined. The adversary will have to spend `max(D, 25) * r / (x/100) = 100mr/x` minutes to mine at least 25 blocks, where `m` denotes `max(D,25)`. The estimated checkpoint depth, assuming he is able to instantly compute the proof, would be `(100mr/x + 60h) / maniputed_interval`. Since the adversary manipulated the timestamp to get additional 2 hours, we have `maniputed_interval = (2 + h)*60/(60h/r) = r(2+h)/h`. Finally, the estimated checkpoint depth is `(100mr/x + 60h) / (r(2+h)/h) = (100mr/x + 60h)h/(r(2+h))`.
+Now, assuming the fast block generation (one block per `r` minutes, `r < 10`) has been lasting for `h` hours (`60h` minutes) since the checkpoint, and the adversary has `x%` of hashing power of all honest miners combined. The adversary will have to spend `max(D, 25) * r / (x/100) = 100mr/x` minutes to mine at least 25 blocks, where `m` denotes `max(D,25)`. The estimated checkpoint depth, assuming he can instantly compute the proof, would be `(100mr/x + 60h) / maniputed_interval`. Since the adversary manipulated the timestamp to get additional 2 hours, we have `maniputed_interval = (2 + h)*60/(60h/r) = r(2+h)/h`. Finally, the estimated checkpoint depth is `(100mr/x + 60h) / (r(2+h)/h) = (100mr/x + 60h)h/(r(2+h))`.
 
 Yet the adversary could only prove `60h/r + 25` blocks.
 
@@ -492,11 +492,11 @@ $$ \iff x \ge 100mr/(120 + 50r/h + allowance * r * 2/h + 25r + allowance*r) $$
 
 #### Limiting the Simulation
 
-While this looks exciting, what if the adversary further manipulate the timestamp of the $(tip-25)-th$ block? We need this block's timestamp to compute the average block interval of the past blocks. In that case, the average interval of the past 11 blocks would be larger than the actual value, resulting in the next block's timestamp being allowed to be much larger. 
+While this looks exciting, what if the adversary further manipulates the timestamp of the $(tip-25)-th$ block? We need this block's timestamp to compute the average block interval of the past blocks. In that case, the average interval of the past 11 blocks would be larger than the actual value, resulting in the next block's timestamp being allowed to be much larger. 
 
-We could limit the average block interval of the past 11 blocks to be within `L` minutes. In this setting, the simulated 'network adjusted time' would be much earlier than the actual timestamp, so the proven interval would be smaller. However, this does not make much difference as the mainnet is generating blocks slower than 10 minutes per block.
+We could limit the average block interval of the past 11 blocks to be within `L` minutes. In this setting, the simulated 'network adjusted time' would be much earlier than the actual timestamp so that the proven interval would be smaller. However, this does not make much difference, as the mainnet is generating blocks at a rate slower than 10 minutes per block.
 
-With the said limiting, the adversary could at most obtain `(L - r)*6` more minutes for the manipulated timestamp when the mainnet is generating blocks every `r` minutes in average. Further, let `h`, `x` denote the same value as in the last sub-section and `m = max(D, 26)`. The manipulated interval becomes `maniputed_interval = ((2 + h)*60 + (L - r)*6)/(60h/r) = (20 + 10h + L - r)*r/10h`. The estimated checkpoint depth is `(100mr/x + 60h) * 10h / ((20 + 10h + L - r) * r)`. The adversary could prove `60h/r + 26` blocks.
+With the said limit, the adversary could at most obtain `(L - r)*6` more minutes for the manipulated timestamp when the mainnet generates blocks every `r` minutes on average. Further, let `h`, `x` denote the same value as in the last sub-section and `m = max(D, 26)`. The manipulated interval becomes `maniputed_interval = ((2 + h)*60 + (L - r)*6)/(60h/r) = (20 + 10h + L - r)*r/10h`. The estimated checkpoint depth is `(100mr/x + 60h) * 10h / ((20 + 10h + L - r) * r)`. The adversary could prove `60h/r + 26` blocks.
 
 Solve `60h/r + 26 >= (100mr/x + 60h) * 10h / ((20 + 10h + L - r) * r) - allowance` for various `L`, `h` values and `(D, allowance)` combinations (with `r` fixed to 8):
 
@@ -520,13 +520,13 @@ $$\iff x \ge 100mr/((60h + 26r + allowance * r) * (20 + 10h + L - r) / (10h) - 6
 
 (see [Appendix B](#appendix-b) for full data)
 
-We will set `L` to 11, then `x` is at least 36, which is good enough.
+We will set `L` to 11, and then `x` is at least 36, which is good enough (the actual value of `L`is 11.1 minutes, or 666 seconds).
 
 ### Defense in Depth - Replacing Chain Tip Signature with More Depth Requirements
 
 In the discussion, the chain tip's signature has become the single point of failure (SPoF). That is, if, for some reason, the ICP canister cannot sign the Bitcoin tip block, then we cannot generate proof that it is acceptable to the deployed smart contract. To overcome this hurdle, we could replace the signature with more depth requirements.
 
-Our current practice is to double the depth requirements, and update the allowance value accordingly. This is on top of the depth requirement escalation mentioned earlier.
+Our current practice is to double the depth requirements and update the allowance value accordingly. This is on top of the depth requirement escalation mentioned earlier.
 
 With this design, we have two new depth requirements: (D, allowance) = (48, 19), (72, 25). The hashing power requirements for the attacker are:
 ```golang
@@ -536,7 +536,7 @@ With this design, we have two new depth requirements: (D, allowance) = (48, 19),
 
 ### Future Proofing - Configurable Extra Depth
 
-The above security parameters are designed based on the current minging rewards and miner concentration (as of May 2025). Things might change over time and it is hard to tell what might happen in 5 or 10 years from now. While our deployed smart contract shall NOT be updated, some parameters could be. We define the extra depth ranging from 0 to 255 to be added to any computed transaction depth requirement, with current value set to 0.
+The above security parameters are designed based on the current mining rewards and miner concentration (as of May 2025). Things may change over time, and it is hard to predict what might happen 5 or 10 years from now. While our deployed smart contract shall NOT be updated, some parameters could be. We define the extra depth ranging from 0 to 255 to be added to any computed transaction depth requirement, with the current value set to 0.
 
 ## Securing Redemption
 
@@ -582,48 +582,48 @@ In a nutshell, an SGX enclave provides:
 
 We are building on top of [ego](https://github.com/edgelesssys/ego), a popular Golang library to use SGX. The enclave verifies a zero-knowledge proof of a redemption transaction before signing the Bitcoin transaction with a private key it manages. The private key is initially generated by the first instance of the enclave, then exported and encrypted so that only itself or another enclave with the exact binary code could decrypt inside the enclave. Put another way, even the Lightec team cannot read the content of the private key or bypass the zkp verification to obtain a signature.
 
-Below picture outlines the interaction between client and server so that the client can retrieve the encrypted private key from server.
+The below picture outlines the interaction between the client and the server so that the client can retrieve the encrypted private key from the server.
 ![zkbtc](docs/zkbtcsgx.drawio.svg)
 
 #### Client-Server TLS Authentication
 Note that the TLS connectivity between Client and Server is bi-directionally authenticated, with pinned self-signed certificates.
 
-1.	Each of the client and server generates a TLS certificate using an Ed25519 key pair derived from the hash of its SGX Unique Key, applying SHA256 twice: `privateKey := SHA256(SHA256(UniqueKey))`
-2.	The generated certificates are then distributed to the client and server.
-3.	Both the client and server load their peer certificate for bi-directional authentication.
+1. Each of the client and server generate a TLS certificate using an Ed25519 key pair derived from the hash of its SGX Unique Key, applying SHA256 twice: `privateKey := SHA256(SHA256(UniqueKey))`
+2. The generated certificates are then distributed to the client and server.
+3. Both the client and server load their peer certificate for bi-directional authentication.
 
 #### Secure Secret Distribution
 
-The server should create the secret only once, and [seal](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/ecrypto#SealWithUniqueKey) it with its SGX Unique Key so that it could [unseal](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/ecrypto#Unseal) it after restarting. After that and once the secret is restored in the enclave, server is ready for the client to retrieve the secret.
+The server should create the secret only once, and [seal](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/ecrypto#SealWithUniqueKey) it with its SGX Unique Key so that it could [unseal](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/ecrypto#Unseal) it after restarting. After that, and once the secret is restored in the enclave, the server is ready for the client to retrieve the secret.
 
 Once the TLS connection is established, the secret exchange process follows these steps:
 
 A. Client Generates an SGX Remote Attestation Report
-1.	The client generates a Secp256k1 key pair, again with the private key being `privateKey := SHA256(SHA256(UniqueKey))`. Note that this might fail with a negleble chance (less than $2^{-127}$), which is acceptable in our use.
-2.	The public key is used as a parameter [to generate an SGX Remote Attestation Report](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/enclave#GetRemoteReport).
-3.	The client sends the SGX report to the server.
+1. The client generates a Secp256k1 key pair, again with the private key being `privateKey := SHA256(SHA256(UniqueKey))`. Note that this might fail with a negleble chance (less than $2^{-127}$), which is acceptable in our use.
+2. The public key is used as a parameter [to generate an SGX Remote Attestation Report](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/enclave#GetRemoteReport).
+3. The client sends the SGX report to the server.
 
 B. Server Verifies the Client’s Report and Encrypts the Secret
-1.	The server [verifies the client’s SGX Remote Attestation Report](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/enclave#VerifyRemoteReport), as well as if the Enclave Unique Id matches that of its own.
-2.	It extracts the client-side public key from the client’s report.
-3.	The server encrypts the secret according to the `ECIES` protocol, using the extracted public key and an ephemeral key pair. The underlying symmetric cipher suite is `AES128 + HMAC-SHA-256-16`.
-4.	It computes the hash of the ciphertext.
-5.	The computed hash is used as a parameter to generate the server’s SGX Remote Attestation Report.
-6.	The server sends the SGX report along with the ciphertext to the client.
+1. The server [verifies the client’s SGX Remote Attestation Report](https://pkg.go.dev/github.com/edgelesssys/ego@v1.7.0/enclave#VerifyRemoteReport), as well as if the Enclave Unique Id matches that of its own.
+2. It extracts the client-side public key from the client’s report.
+3. The server encrypts the secret according to the `ECIES` protocol, using the extracted public key and an ephemeral key pair. The underlying symmetric cipher suite is `AES128 + HMAC-SHA-256-16`.
+4. It computes the hash of the ciphertext.
+5. The computed hash is used as a parameter to generate the server’s SGX Remote Attestation Report.
+6. The server sends the SGX report along with the ciphertext to the client.
 
 C. Client Verifies the Server’s Report and Decrypts the Secret
-1.	The client verifies the server’s SGX Remote Attestation Report, as well as if the Enclave Unique Id matches that of its own.
-2.	It extracts the ciphertext hash from the server’s SGX report.
-3.	The client computes the hash of the received ciphertext.
-4.	It compares the computed hash with the one extracted from the server’s SGX report.
-5.	If the hashes match, the client decrypts the ciphertext using its private key.
-6.	Finally, the client seals the secret using its SGX Unique Key.
+1. The client verifies the server’s SGX Remote Attestation Report, as well as if the Enclave Unique Id matches that of its own.
+2. It extracts the ciphertext hash from the server’s SGX report.
+3. The client computes the hash of the received ciphertext.
+4. It compares the computed hash with the one extracted from the server’s SGX report.
+5. If the hashes match, the client decrypts the ciphertext using its private key.
+6. Finally, the client seals the secret using its SGX Unique Key.
 
 Our SGX code will be open once we complete the audit and launch the product.
 
 ### The BLS Signature Verification for BLS12-381 G2
 
-The Ethereum Light Client Protocol requires this. As related library is not available when we started to develop zkBTC, we developed such circuit on our own and we had submitted a [PR to gnark](https://github.com/Consensys/gnark/pull/1040), pending audit, review and merge.
+The Ethereum Light Client Protocol requires this. As a related library was not available when we started to develop zkBTC, we developed such a circuit on our own, and we had submitted a [PR to gnark](https://github.com/Consensys/gnark/pull/1040), pending audit, review, and merge.
 
 ## chainark
 
@@ -633,33 +633,33 @@ In deposit and redemption, we need to prove a chain of relationship: for Bitcoin
 * a `RecursiveCircuit` either verifies two `UnitCircuit` proofs or one `RecursiveCircuit` or `HybridCircuit` proof immediately followed by a `UnitCircuit` proof;
 * a `HybridCircuit` is similar to `RecursiveCircuit`, but instead of a `UnitCircuit` proof, it verifies the chaining conditions directly. The benefit of `HybridCircuit` over `RecursiveCircuit` is saving a recursion.
 
-The security of chainark is, therefore, of essential importance to zkBTC. Here are the main design considerations:
+The security of chainark is, therefore, of essential importance to zkBTC. Here are the primary design considerations:
 
-* Circuit `FingerPrint` is used throughout the chainark library to identify circuits. Unlike some simple situations in which an outer circuit verifies a proof from an inner circuit and only needs the in-circuit verification key, we design the chainark to be capable of verifying a chain of any length. So, the basic idea is for the `RecursiveCircuit` or `HybridCircuit` to verify their proof (from an earlier proving session). Of course, they cannot use a verification key when its definition has not yet been finished. `FingerPrint` is the answer to this dilemma. In the source code, this is the `MultiRecursiveCircuit.SelfFps` or `HybridCircuit.SelfFps` (an array).
-* For any circuit to verify if a proof from the `RecursiveCircuit` or `HybridCircuit` is acceptable, they need to verify the proof with a proper verification key and check if the recursion has been performed correctly. That is, the verification keys used to in-circuit verify other proofs must match the listed fingerprints exactly one-to-one. These listed fingerprints are used to identify which recursive or hybrid circuit could be trusted.
+* The `FingerPrint` circuit is used throughout the Chainark library to identify circuits. Unlike some simple situations in which an outer circuit verifies a proof from an inner circuit and only needs the in-circuit verification key, we design the chainark to be capable of verifying a chain of any length. The basic idea is for the `RecursiveCircuit` or `HybridCircuit` to verify its proof (from an earlier proving session). Of course, they cannot use a verification key when its definition has not yet been finished. `FingerPrint` is the answer to this dilemma. In the source code, this is the `MultiRecursiveCircuit.SelfFps` or `HybridCircuit.SelfFps` (an array).
+* For any circuit to verify if a proof from the `RecursiveCircuit` or `HybridCircuit` is acceptable, they need to verify the proof with a proper verification key and check if the recursion has been performed correctly. That is, the verification keys used to in-circuit verify other proofs must match the listed fingerprints exactly one-to-one. These listed fingerprints are used to identify which recursive or hybrid circuits could be trusted.
 
 ## Proving System and Trusted Setup
 
-We use [Plonk](https://eprint.iacr.org/2019/953) as supported by [gnark](https://github.com/consensys/gnark/). Plonk is instantiated with the BN254 curve for the purpose of verification in Ethereum.
+We use [Plonk](https://eprint.iacr.org/2019/953) as supported by [gnark](https://github.com/consensys/gnark/). Plonk is instantiated using the BN254 curve for verification purposes in Ethereum.
 
 We use the Aztec setup files with further re-calculation to .lsrs files. Instructions could be found in [this repo](https://github.com/lightec-xyz/plonkSetup).
 
 ## System Upgradability
 
-Full decentralization is somehow contradicting to upgradability, as a system upgrade could not be implemented without some controls. Yet, we will have to do this for reasons including:
+Full decentralization is somewhat contradictory to upgradability, as a system upgrade cannot be implemented without some controls. Yet, we will have to do this for reasons including:
 
 * potential security vulnerabilites newly discovered after product launch, either in the underlying library or in our implementation;
-* a new implementation which is much more efficient (10x or even more) and could greatly enhance user experiences and/or save lots of gas;
+* a new implementation that is much more efficient (10x or even more) and could significantly enhance user experiences and/or save lots of gas;
 * the ultimate upgrade from multi-sig managed address to `OP_ZKP`.
 
 We enable the upgradability in two ways:
 
-* to upgrade the ZKP module for deposit, we need to deploy a new deposit module. Then this new module takes over the ZKP verification for deposit.
-* to upgrade the ZKP module for redemption, we will have to deploy new ICP canister, Oasis smart contract and SGX enclave as they are all designed to be non-upgradable (so that even the project team cannot manipulate these confidential containers). The operator address has to be changed, which leads to asset migration.
+* to upgrade the ZKP module for deposit, we need to deploy a new deposit module. Then, this new module takes over the ZKP verification for deposit.
+* to upgrade the ZKP module for redemption, we will need to deploy a new ICP canister, Oasis smart contract, and SGX enclave, as they are all designed to be non-upgradable (so that even the project team cannot manipulate these confidential containers). The operator address needs to be changed, which results in asset migration.
 
-Since some users might miss the notification of chaning to a new deposit address, the old address will be supported in an admin-only way, as there might be security risks from the old modules.
+Since some users may miss the notification of changing to a new deposit address, the old address will be supported in an admin-only manner, as there may be security risks associated with the old modules.
 
-The control required to implement the upgradability is minimal in the sense that the admin role is only used for upgrade.
+The control required to implement upgradability is minimal, in that the admin role is only used for upgrades.
 
 ## Responsible Disclosure
 
