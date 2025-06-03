@@ -95,7 +95,7 @@ A single-factor defense might attract potential adversaries. Therefore, we desig
 
 ### Security over UX
 
-zkBTC is designed to be fully decentralized, so there is no central role in operating the risk parameters. We have to assume the worst case and defend zkBTC against it. Therefore, the UX has to yield in case there is a conflict. For example, we require each Bitcoin deposit transaction to have a confirmation depth of at least nine instead of six. There are many more such examples throughout this document.
+zkBTC is designed to be fully decentralized, so there is no central role in operating the risk parameters. We have to assume the worst case and defend zkBTC against it. Therefore, the UX has to yield in case there is a conflict. For example, we require each Bitcoin deposit transaction to have a confirmation depth of at least twelve instead of six. There are many more such examples throughout this document.
 
 Third-party services could enhance UX since zkBTC is designed to be fully decentralized. The basic idea is for the third-party service to deposit to the zkBTC system, obtain some zkBTC tokens, and later provide those tokens to users with better UX. Of course, third parties are free to define their business models. 
 
@@ -110,7 +110,7 @@ zkBTC is ongoing rigid security audits. We split the code base into three parts.
 We have designed three defenses against potential attacks, layered in depth:
 
 * `DepositTxCircuit.SigVerif` checks if the `chain tip` (the latest block hash) is signed by a `DFinity` canister. This is the initial implementation of our long-term security design of decentralized roles signing off the `chain tip`.
-* The `Transaction Depth` check demands that each deposit transaction have a certain confirmation depth. Note that the commonly recommended depth of `6` is based on on-chain verification, while in our system, it is essentially an off-chain verification. Therefore, we require at least `9` for small deposits and even deeper for large deposits.
+* The `Transaction Depth` check demands that each deposit transaction have a certain confirmation depth. Note that the commonly recommended depth of `6` is based on on-chain verification, while in our system, it is essentially an off-chain verification. Therefore, we require at least `12` for small deposits and even deeper for large deposits.
 * The `CheckPoint Depth` check demands that the enclosing block for each transaction is one of the descendants of a certain recognized `CheckPoint` (also a Bitcoin block hash).
 
 Now, assuming some potent attacker commanding lots of hashing power has already cracked the first defense, the decentralized roles to sign off the chain tip. It still has to manage enough checkpoint depth. The attacker won't be able to meet both the `Transaction Depth` requirement and the `CheckPoint Depth` requirement if we set proper checking rules in the smart contract. Before discussing any specific rules, we must point out the obvious: it is impossible to pass all legit blocks without passing some offending blocks if the adversary indeed masters too much hashing power. Our aim here is not to reject all offending blocks but to make it as computation-intensive as possible for adversaries, such that attacking us is not economically desirable.
@@ -121,7 +121,7 @@ Now, assuming some potent attacker commanding lots of hashing power has already 
 
 depth circuits proves that BlockM is ancestor of BlockN, and prove that the depth from BlockM to BlockN is n-m.
 
-**note:** The minimum depth of tx is 9, and the minimum depth of cp is 72
+**note:** The minimum depth of tx is 12, and the minimum depth of cp is 72
 
 These circuits includes 2 groups external circuits:
 
@@ -339,7 +339,7 @@ What if the proof submission is purposefully delayed such that `eth_block.timest
 
 #### Checking CheckPoint Depth
 
-Suppose the attacker has 10% of all honest hashing power combined; on average, it has to spend at least 900 minutes (15 hours) to meet the transaction depth requirement for a small amount deposit, which requires `tx_depth` to be at least 9. Meanwhile, around 90 new blocks have been mined in the Bitcoin mainnet. The attacker would find out the checkpoint depth deficit to be 81. If the attacker has 30% of all hashing power, numbers become 300 minutes, 30 new blocks, and 21 blocks of checkpoint depth deficit. 
+Suppose the attacker has 10% of all honest hashing power combined; on average, it has to spend at least 1200 minutes (20 hours) to meet the transaction depth requirement for a small amount deposit, which requires `tx_depth` to be at least 12. Meanwhile, around 120 new blocks have been mined in the Bitcoin mainnet. The attacker would find out the checkpoint depth deficit to be 108. If the attacker has 30% of all hashing power, numbers become 400 minutes, 40 new blocks, and 28 blocks of checkpoint depth deficit. 
 
 The smart contract, however, needs to take care of block timestamp drift, proof generation time, block interval variance, time to broadcast the smart contract invocation transaction and include it in a block, etc. For example, the timestamp of any Bitcoin block might be as early as just a bit later than the median value of its past 11 blocks. That will generate 1 hour or about six blocks more than the actual depth since we use `eth_block.timestamp` to estimate the checkpoint depth. The smart contract will have to subtract 6 or more from its estimated depth so that a *legit* deposit won't be declined. We could leave some more time for various other factors, ranging from half to one hour. Thus:
 ```
@@ -353,7 +353,7 @@ Specifically, we'd like to reserve 6 for the potential checkpoint timestamp erro
     allowance = 6 + 2 + (depth - 6)/6 = 7 + depth/4
 ```
 
-Therefore, for transaction confirmation depth requirements of 9, 12, 18, and 24 and the checkpoint candidate depth requirement of 36, the corresponding allowance is 10, 10, 12, 13, and 16.
+Therefore, for transaction confirmation depth requirements of 12, 18, 24 and 36, which is also the checkpoint candidate depth requirement, the corresponding allowance is 10, 12, 13, and 16.
 
 #### Becoming a CheckPoint Candidate
 
@@ -400,7 +400,7 @@ We need to find out the threshold of hashing power that an adversary must comman
     allowance = 7 + depth/4
 ```
 
-Suppose the transaction depth requirement is D (D = 9 for small deposits, 12 for medium amounts, and 18 and 24 for even larger amounts), and the attacker commands x% hashing power compared to all honest miners combined. At some point on or after the checkpoint block, the attacker must begin to mine its own blocks. To meet the transaction depth requirement, the attacker must spend `average_attacker_time_for_D_blocks` on average, assuming the average block interval to be 10 minutes:
+Suppose the transaction depth requirement is D (D = 12 for small deposits, 18 for medium amounts, and 24 and 36 for even larger amounts), and the attacker commands x% hashing power compared to all honest miners combined. At some point on or after the checkpoint block, the attacker must begin to mine its own blocks. To meet the transaction depth requirement, the attacker must spend `average_attacker_time_for_D_blocks` on average, assuming the average block interval to be 10 minutes:
 ```golang
     average_attacker_time_for_D_blocks := D * 600 / (x/100) = D * 60000/x
 ```
@@ -421,27 +421,22 @@ The attacker needs `cp_depth_diff <= allowance`. But since there could be free d
     // (allowance + D + 17) must be positive
 ```
 
-Solving the above inequalities for `(D, allowance) = (9, 10)`:
-```golang
-    // x >= 900/(9 + 10 + 17) = 25.0
-```
-And for `(D, allowance) = (12, 10), (18, 12), (24, 13)`
+Solving the above inequalities for `(D, allowance) = (12, 10)`:
 ```golang
     // x >= 1200/(12 + 10 + 17) = 30.8
+```
+And for `(D, allowance) = (18, 12), (24, 13), (36, 16)`. The last one is also the `tx_depth` requirement for a checkpoint candidate.
+```golang
     // x >= 1800/(18 + 12 + 17) = 38.3
     // x >= 2400/(24 + 13 + 17) = 44.4
+    // x >= 3600/(36 + 16 + 17) = 52.2
 ```
 
 Note that we were talking about average cases. There are small chances that the attacker mines more blocks sooner than average. However, the block time variation has been handled with the allowance value (see earlier sections).
 
-The `tx_depth` requirement for a checkpoint candidate is set to 36 (with `allowance` set to 16):
+Note that we include the 4.8 free depth from the rare situation, and the 12 free depth is also not easy to obtain for the adversary. So the above numbers are for the worse case. The actual safety margin is better. For example, we might consider when the free depth is at most 6 instead of 17 for `(D, allowance) = (12, 10), (36, 16)`:
 ```golang
-    // x >= 3600/(36 + 16 + 17) = 52.2
-```
-
-Note that we include the 4.8 free depth from the rare situation, and the 12 free depth is also not easy to obtain for the adversary. So the above numbers are for the worse case. The actual safety margin is better. For example, we might consider when the free depth is at most 6 instead of 17 for `(D, allowance) = (9, 10), (36, 16)`:
-```golang
-    // x >= 900 /( 9 + 10 + 6) = 36.0 (compared to 25.0)
+    // x >= 1200/(12 + 10 + 6) = 42.9 (compared to 30.8)
     // x >= 3600/(36 + 16 + 6) = 62.1 (compared to 52.2)
 ```
 
@@ -538,6 +533,10 @@ With this design, we have two new depth requirements: (D, allowance) = (48, 19),
     // x >= 4800/(48 + 19 + 17) = 57.1
     // x >= 7200/(72 + 25 + 17) = 63.2
 ```
+
+### Future Proofing - Configurable Extra Depth
+
+The above security parameters are designed based on the current minging rewards and miner concentration (as of May 2025). Things might change over time and it is hard to tell what might happen in 5 or 10 years from now. While our deployed smart contract shall NOT be updated, some parameters could be. We define the extra depth ranging from 0 to 255 to be added to any computed transaction depth requirement, with current value set to 0.
 
 ## Securing Redemption
 
