@@ -101,7 +101,13 @@ Third-party services could enhance the user experience (UX) since zkBTC is desig
 
 ## Audit Reports
 
-zkBTC is ongoing rigid security audits. We split the code base into three parts. The first and second parts have been audited, and we have obtained the final reports. This includes the [PR to gnark](https://github.com/Consensys/gnark/pull/1040) to add BLS signature verification for the BLS12-381 curve. The third part is being audited. We plan to publish all audit reports once the third audit is finalized.
+zkBTC has completed rigid security audits. We split the code base into three parts, with the smart contracts being audited by two independent auditors and the later one over the newer version covering asset migration. The dual-auditing for the smart contracts is based on its core importance and non-upgradability.
+
+[BEOSIN - March 2025 - Bitcoin and common Circuits, Smart Contracts](audit/202503211351.pdf)
+
+[LeastAuthority - April 2025 - Cryptography](audit/Least%20Authority%20-%20Lightec%20LTD%20zkBTC%20Cryptography%20Final%20Audit%20Report.pdf)
+
+[LeastAuthority - June 2025 - Ethereum Circuits and Smart Contracts](audit/Least%20Authority%20-Lightec%20zkBTC%20Circuit%20and%20Smart%20Contracts%20Final%20Audit%20Report.pdf)
 
 ## Securing Deposits
 
