@@ -356,7 +356,7 @@ The smart contract, however, needs to address block timestamp drift, proof gener
 
 Specifically, we'd like to reserve 6 for the potential checkpoint timestamp error, 2 for waiting for the chain tip to be available and proof to be generated, and then 1 for every additional 4 confirmation depth requirements covering the variation of hashing power and block time.
 ```
-    allowance = 6 + 2 + floor((depth - 4)/4) = 7 + floor(depth/4)
+    allowance = 6 + 2 + ceil((depth - 4)/4) = 7 + ceil(depth/4)
 ```
 
 Therefore, for transaction confirmation depth requirements of 12, 18, 24, and 36, which is also the checkpoint candidate depth requirement, the corresponding allowances are 10, 12, 13, and 16.
@@ -403,7 +403,7 @@ We need to determine the threshold of hashing power that an adversary must posse
                     = better_estimation - free_depth;
     free_depth      = 12 + 4.8 ~= 17;
     required_minimal_depth = estimated_depth - allowance;
-    allowance = 7 + depth/4
+    allowance = 7 + ceil(depth/4);
 ```
 
 Suppose the transaction depth requirement is D (D = 12 for small deposits, 18 for medium amounts, and 24 and 36 for even larger amounts), and the attacker commands x% hashing power compared to all honest miners combined. At some point on or after the checkpoint block, the attacker must begin to mine its blocks. To meet the transaction depth requirement, the attacker must spend `average_attacker_time_for_D_blocks` on average, assuming the average block interval to be 10 minutes:
