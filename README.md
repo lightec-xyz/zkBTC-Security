@@ -356,7 +356,7 @@ The smart contract, however, needs to address block timestamp drift, proof gener
 
 Specifically, we'd like to reserve 6 for the potential checkpoint timestamp error, 2 for waiting for the chain tip to be available and proof to be generated, and then 1 for every additional 4 confirmation depth requirements covering the variation of hashing power and block time.
 ```
-    allowance = 6 + 2 + (depth - 6)/6 = 7 + depth/4
+    allowance = 6 + 2 + floor((depth - 4)/4) = 7 + floor(depth/4)
 ```
 
 Therefore, for transaction confirmation depth requirements of 12, 18, 24, and 36, which is also the checkpoint candidate depth requirement, the corresponding allowances are 10, 12, 13, and 16.
