@@ -667,8 +667,16 @@ The control required to implement upgradability is minimal, in that the admin ro
 
 ## Responsible Disclosure
 
+All security bugs in zkBTC should be reported by email to hello@lightec.xyz.
+
+Your email will be acknowledged within 7 days, and you'll be kept up to date with the progress until resolution. Your issue will be fixed or made public within 90 days. Currently we don't have a bug bounty program yet, but award in L2 Tokens could be discussed in a case-by-case way.
 
 ## Open Source Plan
+
+* Most of the smart contracts have been open and could be found in EtherScan.
+* Some core circuit components are also open sourced, including chainark (a recursive verification circuit library), BLS12-381 G2 signature verification (a PR to gnark).
+* The SGX code base will be open source soon to help the community understand our security design principles (that even the development / operation team cannot access the private keys).
+* The rest of the circuits will be open source once we obtain more funding and secure our market place.
 
 ## Appendix A
 
